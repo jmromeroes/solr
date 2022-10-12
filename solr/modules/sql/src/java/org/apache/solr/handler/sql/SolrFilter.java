@@ -16,6 +16,7 @@
  */
 package org.apache.solr.handler.sql;
 
+
 import java.lang.invoke.MethodHandles;
 import java.math.BigDecimal;
 import java.time.Instant;
