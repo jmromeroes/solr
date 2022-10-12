@@ -56,6 +56,7 @@ class SolrFilter extends Filter implements SolrRel {
 
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+
   private static final Pattern CALCITE_TIMESTAMP_REGEX =
       Pattern.compile("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?$");
   private static final Pattern CALCITE_DATE_ONLY_REGEX = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
