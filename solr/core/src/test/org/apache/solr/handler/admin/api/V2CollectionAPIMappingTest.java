@@ -21,10 +21,7 @@ import static org.apache.solr.common.params.CollectionAdminParams.COLLECTION;
 import static org.apache.solr.common.params.CollectionAdminParams.COLL_CONF;
 import static org.apache.solr.common.params.CommonAdminParams.ASYNC;
 import static org.apache.solr.common.params.CommonParams.ACTION;
-import static org.apache.solr.common.params.CommonParams.NAME;
-import static org.apache.solr.common.params.CoreAdminParams.SHARD;
 
-import java.util.Map;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.params.SolrParams;
@@ -49,19 +46,14 @@ import org.junit.Test;
  * are never expected in the same request.
  */
 public class V2CollectionAPIMappingTest extends V2ApiMappingTest<CollectionsHandler> {
+
   @Override
   public void populateApiBag() {
     final CollectionsHandler collectionsHandler = getRequestHandler();
-    apiBag.registerObject(new BalanceShardUniqueAPI(collectionsHandler));
-    apiBag.registerObject(new DeleteCollectionAPI(collectionsHandler));
-    apiBag.registerObject(new DeleteReplicaPropertyAPI(collectionsHandler));
     apiBag.registerObject(new MigrateDocsAPI(collectionsHandler));
     apiBag.registerObject(new ModifyCollectionAPI(collectionsHandler));
     apiBag.registerObject(new MoveReplicaAPI(collectionsHandler));
     apiBag.registerObject(new RebalanceLeadersAPI(collectionsHandler));
-    apiBag.registerObject(new ReloadCollectionAPI(collectionsHandler));
-    apiBag.registerObject(new SetCollectionPropertyAPI(collectionsHandler));
-    apiBag.registerObject(new CollectionStatusAPI(collectionsHandler));
   }
 
   @Override
@@ -72,17 +64,6 @@ public class V2CollectionAPIMappingTest extends V2ApiMappingTest<CollectionsHand
   @Override
   public boolean isCoreSpecific() {
     return false;
-  }
-
-  @Test
-  public void testGetCollectionStatus() throws Exception {
-    final SolrParams v1Params =
-        captureConvertedV1Params(
-            "/collections/collName", "GET", Map.of(SHARD, new String[] {"shard2"}));
-
-    assertEquals(CollectionParams.CollectionAction.CLUSTERSTATUS.toString(), v1Params.get(ACTION));
-    assertEquals("collName", v1Params.get(COLLECTION));
-    assertEquals("shard2", v1Params.get(SHARD));
   }
 
   @Test
@@ -106,22 +87,11 @@ public class V2CollectionAPIMappingTest extends V2ApiMappingTest<CollectionsHand
         CollectionParams.CollectionAction.MODIFYCOLLECTION.lowerName, v1Params.get(ACTION));
     assertEquals("collName", v1Params.get(COLLECTION));
     assertEquals(123, v1Params.getPrimitiveInt(ZkStateReader.REPLICATION_FACTOR));
-    assertEquals(true, v1Params.getPrimitiveBool(ZkStateReader.READ_ONLY));
+    assertTrue(v1Params.getPrimitiveBool(ZkStateReader.READ_ONLY));
     assertEquals("techproducts_config", v1Params.get(COLL_CONF));
     assertEquals("requestTrackingId", v1Params.get(ASYNC));
     assertEquals("bar", v1Params.get("property.foo"));
     assertEquals(456, v1Params.getPrimitiveInt("property.baz"));
-  }
-
-  @Test
-  public void testReloadCollectionAllProperties() throws Exception {
-    final SolrParams v1Params =
-        captureConvertedV1Params(
-            "/collections/collName", "POST", "{ 'reload': {'async': 'requestTrackingId'}}");
-
-    assertEquals(CollectionParams.CollectionAction.RELOAD.lowerName, v1Params.get(ACTION));
-    assertEquals("collName", v1Params.get(NAME));
-    assertEquals("requestTrackingId", v1Params.get(ASYNC));
   }
 
   @Test
@@ -147,10 +117,10 @@ public class V2CollectionAPIMappingTest extends V2ApiMappingTest<CollectionsHand
     assertEquals("someTargetNode", v1Params.get("targetNode"));
     assertEquals("someReplica", v1Params.get("replica"));
     assertEquals("someShard", v1Params.get("shard"));
-    assertEquals(true, v1Params.getPrimitiveBool("waitForFinalState"));
+    assertTrue(v1Params.getPrimitiveBool("waitForFinalState"));
     assertEquals(123, v1Params.getPrimitiveInt("timeout"));
-    assertEquals(true, v1Params.getPrimitiveBool("inPlaceMove"));
-    assertEquals(true, v1Params.getPrimitiveBool("followAliases"));
+    assertTrue(v1Params.getPrimitiveBool("inPlaceMove"));
+    assertTrue(v1Params.getPrimitiveBool("followAliases"));
   }
 
   @Test
@@ -172,28 +142,8 @@ public class V2CollectionAPIMappingTest extends V2ApiMappingTest<CollectionsHand
     assertEquals("someTargetCollection", v1Params.get("target.collection"));
     assertEquals("someSplitKey", v1Params.get("split.key"));
     assertEquals(123, v1Params.getPrimitiveInt("forward.timeout"));
-    assertEquals(true, v1Params.getPrimitiveBool("followAliases"));
+    assertTrue(v1Params.getPrimitiveBool("followAliases"));
     assertEquals("requestTrackingId", v1Params.get(ASYNC));
-  }
-
-  @Test
-  public void testBalanceShardUniqueAllProperties() throws Exception {
-    final SolrParams v1Params =
-        captureConvertedV1Params(
-            "/collections/collName",
-            "POST",
-            "{ 'balance-shard-unique': {"
-                + "'property': 'somePropertyToBalance', "
-                + "'onlyactivenodes': false, "
-                + "'shardUnique': true"
-                + "}}");
-
-    assertEquals(
-        CollectionParams.CollectionAction.BALANCESHARDUNIQUE.lowerName, v1Params.get(ACTION));
-    assertEquals("collName", v1Params.get(COLLECTION));
-    assertEquals("somePropertyToBalance", v1Params.get("property"));
-    assertEquals(false, v1Params.getPrimitiveBool("onlyactivenodes"));
-    assertEquals(true, v1Params.getPrimitiveBool("shardUnique"));
   }
 
   @Test
@@ -209,42 +159,5 @@ public class V2CollectionAPIMappingTest extends V2ApiMappingTest<CollectionsHand
     assertEquals("collName", v1Params.get(COLLECTION));
     assertEquals(123, v1Params.getPrimitiveInt("maxAtOnce"));
     assertEquals(456, v1Params.getPrimitiveInt("maxWaitSeconds"));
-  }
-
-  @Test
-  public void testDeleteReplicaPropertyAllProperties() throws Exception {
-    final SolrParams v1Params =
-        captureConvertedV1Params(
-            "/collections/collName",
-            "POST",
-            "{ 'delete-replica-property': {"
-                + "'shard': 'someShardName', "
-                + "'replica': 'someReplicaName', "
-                + "'property': 'somePropertyName' "
-                + "}}");
-
-    assertEquals(
-        CollectionParams.CollectionAction.DELETEREPLICAPROP.lowerName, v1Params.get(ACTION));
-    assertEquals("collName", v1Params.get(COLLECTION));
-    assertEquals("someShardName", v1Params.get("shard"));
-    assertEquals("someReplicaName", v1Params.get("replica"));
-    assertEquals("somePropertyName", v1Params.get("property"));
-  }
-
-  @Test
-  public void testSetCollectionPropertyAllProperties() throws Exception {
-    final SolrParams v1Params =
-        captureConvertedV1Params(
-            "/collections/collName",
-            "POST",
-            "{ 'set-collection-property': {"
-                + "'name': 'somePropertyName', "
-                + "'value': 'somePropertyValue' "
-                + "}}");
-
-    assertEquals(CollectionParams.CollectionAction.COLLECTIONPROP.lowerName, v1Params.get(ACTION));
-    assertEquals("collName", v1Params.get(NAME));
-    assertEquals("somePropertyName", v1Params.get("propertyName"));
-    assertEquals("somePropertyValue", v1Params.get("propertyValue"));
   }
 }

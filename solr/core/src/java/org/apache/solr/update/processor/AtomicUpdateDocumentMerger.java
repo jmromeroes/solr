@@ -559,7 +559,7 @@ public class AtomicUpdateDocumentMerger {
 
     if (original.size() > initialSize) { // update only if more are added
       if (original.size() == 1) { // if single value, pass the value instead of List
-        doAdd(toDoc, sif, original.toArray()[0]);
+        doSet(toDoc, sif, original.toArray()[0]);
       } else {
         toDoc.setField(name, original);
       }
@@ -587,11 +587,10 @@ public class AtomicUpdateDocumentMerger {
 
       // behavior similar to doAdd/doSet
       Object resObj = getNativeFieldValue(sf.getName(), fieldVal);
-      if (!(resObj instanceof Number)) {
+      if (!(resObj instanceof Number result)) {
         throw new SolrException(
             ErrorCode.BAD_REQUEST, "Invalid input '" + resObj + "' for field " + sf.getName());
       }
-      Number result = (Number) resObj;
       if (oldVal instanceof Long) {
         result = ((Long) oldVal).longValue() + result.longValue();
       } else if (oldVal instanceof Float) {
@@ -691,10 +690,9 @@ public class AtomicUpdateDocumentMerger {
   }
 
   private static boolean isChildDoc(Object obj) {
-    if (!(obj instanceof Collection)) {
+    if (!(obj instanceof Collection<?> objValues)) {
       return obj instanceof SolrDocumentBase;
     }
-    Collection<?> objValues = (Collection<?>) obj;
     if (objValues.size() == 0) {
       return false;
     }

@@ -173,8 +173,8 @@ public class TestStressLucene extends TestRTGBase {
                       verbose("reopen result", newReader);
 
                       synchronized (globalLock) {
-                        assert newReader.getRefCount() > 0;
-                        assert reader.getRefCount() > 0;
+                        assertTrue(newReader.getRefCount() > 0);
+                        assertTrue(reader.getRefCount() > 0);
 
                         // install the new reader if it's newest (and check the current version
                         // since another reader may have already been installed)
@@ -347,7 +347,7 @@ public class TestStressLucene extends TestRTGBase {
                       verbose("ERROR: Couldn't find a doc for id", id, "using reader", r);
                     }
                     assertTrue(docid >= 0); // we should have found the document, or its tombstone
-                    Document doc = r.document(docid);
+                    Document doc = r.storedFields().document(docid);
                     long foundVal = Long.parseLong(doc.get(FIELD));
                     if (foundVal < Math.abs(val)) {
                       verbose(

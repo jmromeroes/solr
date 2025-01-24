@@ -47,8 +47,10 @@ import textwrap
 import time
 import urllib
 from collections import OrderedDict
-from datetime import datetime
+from datetime import date
 from datetime import timedelta
+from datetime import UTC
+from datetime import datetime
 
 try:
     import holidays
@@ -63,11 +65,10 @@ except:
 import scriptutil
 from consolemenu import ConsoleMenu
 from consolemenu.items import FunctionItem, SubmenuItem, ExitItem
-from consolemenu.screen import Screen
 from scriptutil import BranchType, Version, download, run
 
 # Solr-to-Java version mapping
-java_versions = {6: 8, 7: 8, 8: 8, 9: 11, 10: 11}
+java_versions = {6: 8, 7: 8, 8: 8, 9: 11, 10: 21}
 editor = None
 state = None
 templates = None
@@ -103,23 +104,31 @@ def expand_jinja(text, vars=None):
         'release_version_minor': state.release_version_minor,
         'release_version_bugfix': state.release_version_bugfix,
         'release_version_refguide': state.get_refguide_release() ,
+        'release_version_jira': state.get_jira_release(),
         'state': state,
         'gpg_key' : state.get_gpg_key(),
         'gradle_cmd' : 'gradlew.bat' if is_windows() else './gradlew',
-        'epoch': unix_time_millis(datetime.utcnow()),
+        'epoch': unix_time_millis(datetime.now(UTC)),
         'get_next_version': state.get_next_version(),
         'current_git_rev': state.get_current_git_rev(),
         'keys_downloaded': keys_downloaded(),
+        'docker_version_to_remove': state.get_docker_version_to_remove(),
         'editor': get_editor(),
         'rename_cmd': 'ren' if is_windows() else 'mv',
         'vote_close_72h': vote_close_72h_date().strftime("%Y-%m-%d %H:00 UTC"),
         'vote_close_72h_epoch': unix_time_millis(vote_close_72h_date()),
         'vote_close_72h_holidays': vote_close_72h_holidays(),
-        'solr_news_file': solr_news_file,
+        'solr_news_file': state.get_solr_news_file(),
         'load_lines': load_lines,
         'set_java_home': set_java_home,
-        'latest_version': state.get_latest_version(),
-        'latest_lts_version': state.get_latest_lts_version(),
+        'latest_version': state.latest_version,
+        'latest_version_major': state.latest_version_major,
+        'latest_version_minor': state.latest_version_minor,
+        'latest_version_bugfix': state.latest_version_bugfix,
+        'latest_lts_version': state.latest_lts_version,
+        'latest_lts_version_major': state.latest_lts_version_major,
+        'latest_lts_version_minor': state.latest_lts_version_minor,
+        'latest_lts_version_bugfix': state.latest_lts_version_bugfix,
         'main_version': state.get_main_version(),
         'mirrored_versions': state.get_mirrored_versions(),
         'mirrored_versions_to_delete': state.get_mirrored_versions_to_delete(),
@@ -206,7 +215,7 @@ def check_prerequisites(todo=None):
     return True
 
 
-epoch = datetime.utcfromtimestamp(0)
+epoch = datetime.fromtimestamp(0, UTC)
 
 
 def unix_time_millis(dt):
@@ -286,7 +295,7 @@ class ReleaseState:
         self.latest_version = None
         self.previous_rcs = {}
         self.rc_number = 1
-        self.start_date = unix_time_millis(datetime.utcnow())
+        self.start_date = unix_time_millis(datetime.now(UTC))
         self.script_branch = run("git rev-parse --abbrev-ref HEAD").strip()
         self.mirrored_versions = None
         try:
@@ -295,6 +304,8 @@ class ReleaseState:
             print("WARNING: This script shold (ideally) run from the release branch, not a feature branch (%s)" % self.script_branch)
             self.script_branch_type = 'feature'
         self.set_release_version(release_version)
+        self.set_latest_version()
+        self.set_latest_lts_version()
 
     def set_release_version(self, version):
         self.validate_release_version(self.script_branch_type, self.script_branch, version)
@@ -335,58 +346,65 @@ class ReleaseState:
         else:
             return release_date.isoformat()[:10]
 
-    def get_latest_version(self):
-        if self.latest_version is None:
-            versions = self.get_mirrored_versions()
-            latest = versions[0]
-            for ver in versions:
-                if Version.parse(ver).gt(Version.parse(latest)):
-                    latest = ver
-            self.latest_version = latest
-            self.save()
-        return state.latest_version
-
-    def get_mirrored_versions(self):
-        if state.mirrored_versions is None:
-            # Add the solr release versions from lucene and solr projects
-            releases_str = load("https://projects.apache.org/json/foundation/releases.json", "utf-8")
-            releases_lucene_solr = json.loads(releases_str)['lucene']
-            releases_solr = json.loads(releases_str)['solr']
-            versions_l_s = [ r for r in list(map(lambda y: y[5:], filter(lambda x: x.startswith('solr-'), list(releases_lucene_solr.keys())))) ]
-            versions_s = [ r for r in list(map(lambda y: y[5:], filter(lambda x: re.match(r'^solr-(9|1\d)\.', x), list(releases_solr.keys())))) ]
-            state.mirrored_versions = versions_l_s + versions_s
-        return state.mirrored_versions
-
-    def get_mirrored_versions_to_delete(self):
+    def set_latest_version(self):
         versions = self.get_mirrored_versions()
-        to_keep = versions
-        if state.release_type == 'major':
-          to_keep = [self.release_version, self.get_latest_version()]
-        if state.release_type == 'minor':
-          to_keep = [self.release_version, self.get_latest_lts_version()]
-        if state.release_type == 'bugfix':
-          if Version.parse(state.release_version).major == Version.parse(state.get_latest_version()).major:
-            to_keep = [self.release_version, self.get_latest_lts_version()]
-          elif Version.parse(state.release_version).major == Version.parse(state.get_latest_lts_version()).major:
-            to_keep = [self.get_latest_version(), self.release_version]
-          else:
-            raise Exception("Release version %s must have same major version as current minor or lts release")
-        return [ver for ver in versions if ver not in to_keep]
+        latest = versions[0]
+        for ver in versions:
+            if Version.parse(ver).gt(Version.parse(latest)):
+                latest = ver
+        self.latest_version = latest
+        v = Version.parse(latest)
+        self.latest_version_major = v.major
+        self.latest_version_minor = v.minor
+        self.latest_version_bugfix = v.bugfix
+        self.latest_release_branch = "branch_%s_%s" % (v.major, v.minor)
 
-    def get_main_version(self):
-        v = Version.parse(self.get_latest_version())
-        return "%s.%s.%s" % (v.major + 1, 0, 0)
-
-    def get_latest_lts_version(self):
+    def set_latest_lts_version(self):
         versions = self.get_mirrored_versions()
-        latest = self.get_latest_version()
+        latest = self.latest_version
         lts_prefix = "%s." % (Version.parse(latest).major - 1)
         lts_versions = list(filter(lambda x: x.startswith(lts_prefix), versions))
         latest_lts = lts_versions[0]
         for ver in lts_versions:
             if Version.parse(ver).gt(Version.parse(latest_lts)):
                 latest_lts = ver
-        return latest_lts
+        self.latest_lts_version =latest_lts
+        v = Version.parse(latest_lts)
+        self.latest_lts_version_major = v.major
+        self.latest_lts_version_minor = v.minor
+        self.latest_lts_version_bugfix = v.bugfix
+        self.latest_lts_release_branch = "branch_%s_%s" % (v.major, v.minor)
+
+    def get_mirrored_versions(self):
+        if self.mirrored_versions is None:
+            # Add the solr release versions from lucene and solr projects
+            releases_str = load("https://projects.apache.org/json/foundation/releases.json", "utf-8")
+            releases_lucene_solr = json.loads(releases_str)['lucene']
+            releases_solr = json.loads(releases_str)['solr']
+            versions_l_s = [ r for r in list(map(lambda y: y[5:], filter(lambda x: x.startswith('solr-'), list(releases_lucene_solr.keys())))) ]
+            versions_s = [ r for r in list(map(lambda y: y[5:], filter(lambda x: re.match(r'^solr-(9|1\d)\.', x), list(releases_solr.keys())))) ]
+            self.mirrored_versions = versions_l_s + versions_s
+        return self.mirrored_versions
+
+    def get_mirrored_versions_to_delete(self):
+        versions = self.get_mirrored_versions()
+        to_keep = versions
+        if state.release_type == 'major':
+          to_keep = [self.release_version, self.latest_version]
+        if state.release_type == 'minor':
+          to_keep = [self.release_version, self.latest_lts_version]
+        if state.release_type == 'bugfix':
+          if state.release_version_major == state.latest_version_major:
+            to_keep = [self.release_version, self.latest_lts_version]
+          elif state.release_version_major == state.latest_lts_version_major:
+            to_keep = [self.latest_version, self.release_version]
+          else:
+            raise Exception("Release version %s must have same major version as current minor or lts release")
+        return [ver for ver in versions if ver not in to_keep]
+
+    def get_main_version(self):
+        v = Version.parse(self.latest_version)
+        return "%s.%s.%s" % (v.major + 1, 0, 0)
 
     def validate_release_version(self, branch_type, branch, release_version):
         ver = Version.parse(release_version)
@@ -416,7 +434,7 @@ class ReleaseState:
             return 'main'
         elif v.is_minor_release():
             return self.get_stable_branch_name()
-        elif v.major == Version.parse(self.get_latest_version()).major:
+        elif v.major == Version.parse(self.latest_version).major:
             return self.get_minor_branch_name()
         else:
             return self.release_branch
@@ -464,6 +482,16 @@ class ReleaseState:
         }
         if self.latest_version:
             dict['latest_version'] = self.latest_version
+            dict['latest_version_major'] = self.latest_version_major
+            dict['latest_version_minor'] = self.latest_version_minor
+            dict['latest_version_bugfix'] = self.latest_version_bugfix
+            dict['latest_release_branch'] = self.latest_release_branch
+        if self.latest_lts_version:
+            dict['latest_lts_version'] = self.latest_lts_version
+            dict['latest_lts_version_major'] = self.latest_lts_version_major
+            dict['latest_lts_version_minor'] = self.latest_lts_version_minor
+            dict['latest_lts_version_bugfix'] = self.latest_lts_version_bugfix
+            dict['latest_lts_release_branch'] = self.latest_lts_release_branch
         return dict
 
     def restore_from_dict(self, dict):
@@ -579,7 +607,7 @@ class ReleaseState:
         return folder
 
     def get_minor_branch_name(self):
-        latest = state.get_latest_version()
+        latest = state.latest_version
         if latest is not None:
           v = Version.parse(latest)
           return "branch_%s_%s" % (v.major, v.minor)
@@ -590,7 +618,7 @@ class ReleaseState:
         if self.release_type == 'major':
             v = Version.parse(self.get_main_version())
         else:
-            v = Version.parse(self.get_latest_version())
+            v = Version.parse(self.latest_version)
         return "branch_%sx" % v.major
 
     def get_next_version(self):
@@ -602,8 +630,21 @@ class ReleaseState:
             return "%s.%s.%s" % (self.release_version_major, self.release_version_minor, self.release_version_bugfix + 1)
         return None
 
+    def get_docker_version_to_remove(self):
+        if self.release_type == 'minor' and self.release_version_minor >= 2:
+            return "%s.%s" % (self.release_version_major, self.release_version_minor - 2)
+        else:
+            return None
+
     def get_refguide_release(self):
         return "%s_%s" % (self.release_version_major, self.release_version_minor)
+
+    def get_jira_release(self):
+        if self.release_type == 'major' or self.release_type == 'minor':
+            return "%s.%s" % (self.release_version_major, self.release_version_minor)
+        if self.release_type == 'bugfix':
+            return "%s.%s.%s" % (self.release_version_major, self.release_version_minor, self.release_version_bugfix)
+        return None
 
     def get_java_home(self):
         return self.get_java_home_for_version(self.release_version)
@@ -622,6 +663,10 @@ class ReleaseState:
 
     def get_java_cmd(self):
         return os.path.join(self.get_java_home(), "bin", "java")
+
+    def get_solr_news_file(self):
+        return os.path.join(state.get_website_git_folder(), 'content', 'solr', 'solr_news',
+                     "%s-%s-available.md" % (state.get_release_date_iso(), state.release_version.replace(".", "-")))
 
     def get_todo_states(self):
         states = {}
@@ -675,8 +720,8 @@ class TodoGroup(SecretYamlObject):
         return "%s%s (%d/%d)" % (prefix, self.title, self.num_done(), self.num_applies())
 
     def get_submenu(self):
-        menu = UpdatableConsoleMenu(title=self.title, subtitle=self.get_subtitle, prologue_text=self.get_description(),
-                           screen=MyScreen())
+        menu = ConsoleMenu(title=self.title, subtitle=self.get_subtitle, prologue_text=self.get_description(),
+                           clear_screen=False)
         menu.exit_item = CustomExitItem("Return")
         for todo in self.get_todos():
             if todo.applies(state.release_type):
@@ -684,7 +729,7 @@ class TodoGroup(SecretYamlObject):
         return menu
 
     def get_menu_item(self):
-        item = UpdatableSubmenuItem(self.get_title, self.get_submenu())
+        item = SubmenuItem(self.get_title, self.get_submenu())
         return item
 
     def get_todos(self):
@@ -763,7 +808,7 @@ class Todo(SecretYamlObject):
 
     def set_done(self, is_done):
         if is_done:
-            self.state['done_date'] = unix_time_millis(datetime.utcnow())
+            self.state['done_date'] = unix_time_millis(datetime.now(UTC))
             if self.persist_vars:
                 for k in self.persist_vars:
                     self.state[k] = self.get_vars()[k]
@@ -841,7 +886,7 @@ class Todo(SecretYamlObject):
             print("ERROR while executing todo %s (%s)" % (self.get_title(), e))
 
     def get_menu_item(self):
-        return UpdatableFunctionItem(self.get_title, self.display_and_confirm)
+        return FunctionItem(self.get_title, self.display_and_confirm)
 
     def clone(self):
         clone = Todo(self.id, self.title, description=self.description)
@@ -957,13 +1002,13 @@ def expand_multiline(cmd_txt, indent=0):
 
 
 def unix_to_datetime(unix_stamp):
-    return datetime.utcfromtimestamp(unix_stamp / 1000)
+    return datetime.fromtimestamp(unix_stamp / 1000, UTC)
 
 
 def generate_asciidoc():
     base_filename = os.path.join(state.get_release_folder(),
                                  "solr_release_%s"
-                                 % (state.release_version.replace("\.", "_")))
+                                 % (state.release_version.replace("\\.", "_")))
 
     filename_adoc = "%s.adoc" % base_filename
     filename_html = "%s.html" % base_filename
@@ -971,7 +1016,7 @@ def generate_asciidoc():
 
     fh.write("= Solr Release %s\n\n" % state.release_version)
     fh.write("(_Generated by releaseWizard.py v%s at %s_)\n\n"
-             % (getScriptVersion(), datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")))
+             % (getScriptVersion(), datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")))
     fh.write(":numbered:\n\n")
     fh.write("%s\n\n" % template('help'))
     for group in state.todo_groups:
@@ -1078,7 +1123,7 @@ def file_to_string(filename):
         return f.read().strip()
 
 def download_keys():
-    download('KEYS', "https://archive.apache.org/dist/solr/KEYS", state.config_path)
+    download('KEYS', "https://downloads.apache.org/solr/KEYS", state.config_path)
 
 def keys_downloaded():
     return os.path.exists(os.path.join(state.config_path, "KEYS"))
@@ -1152,14 +1197,14 @@ def configure_pgp(gpg_todo):
         res = run("gpg --list-secret-keys %s" % gpg_fingerprint)
         print("Found key %s on your private gpg keychain" % gpg_id)
         # Check rsa and key length >= 4096
-        match = re.search(r'^sec +((rsa|dsa)(\d{4})) ', res)
+        match = re.search(r'^sec#? +((rsa|dsa)(\d{4})) ', res)
         type = "(unknown)"
         length = -1
         if match:
             type = match.group(2)
             length = int(match.group(3))
         else:
-            match = re.search(r'^sec +((\d{4})([DR])/.*?) ', res)
+            match = re.search(r'^sec#? +((\d{4})([DR])/.*?) ', res)
             if match:
                 type = 'rsa' if match.group(3) == 'R' else 'dsa'
                 length = int(match.group(2))
@@ -1231,21 +1276,6 @@ def configure_pgp(gpg_todo):
     gpg_state['gpg_key'] = gpg_id
     gpg_state['gpg_fingerprint'] = gpg_fingerprint
 
-    print(textwrap.dedent("""\
-            You can choose between signing the release with the gpg program or with
-            the gradle signing plugin. Read about the difference by running
-            ./gradlew helpPublishing"""))
-
-    gpg_state['use_gradle'] = ask_yes_no("Do you want to sign the release with gradle plugin? No means gpg")
-
-    print(textwrap.dedent("""\
-            You need the passphrase to sign the release.
-            This script can prompt you securely for your passphrase (will not be stored) and pass it on to
-            buildAndPushRelease in a secure way. However, you can also configure your passphrase in advance 
-            and avoid having to type it in the terminal. This can be done with either a gpg-agent (for gpg tool)
-            or in gradle.properties or an ENV.var (for gradle), See ./gradlew helpPublishing for details."""))
-    gpg_state['prompt_pass'] = ask_yes_no("Do you want this wizard to prompt you for your gpg password? ")
-
     return True
 
 
@@ -1253,104 +1283,6 @@ def pause(fun=None):
     if fun:
         fun()
     input("\nPress ENTER to continue...")
-
-
-# Custom classes for ConsoleMenu, to make menu texts dynamic
-# Needed until https://github.com/aegirhall/console-menu/pull/25 is released
-# See https://pypi.org/project/console-menu/ for other docs
-
-class UpdatableConsoleMenu(ConsoleMenu):
-
-    def __repr__(self):
-        return "%s: %s. %d items" % (self.get_title(), self.get_subtitle(), len(self.items))
-
-    def draw(self):
-        """
-        Refreshes the screen and redraws the menu. Should be called whenever something changes that needs to be redrawn.
-        """
-        self.screen.printf(self.formatter.format(title=self.get_title(), subtitle=self.get_subtitle(), items=self.items,
-                                                 prologue_text=self.get_prologue_text(), epilogue_text=self.get_epilogue_text()))
-
-    # Getters to get text in case method reference
-    def get_title(self):
-        return self.title() if callable(self.title) else self.title
-
-    def get_subtitle(self):
-        return self.subtitle() if callable(self.subtitle) else self.subtitle
-
-    def get_prologue_text(self):
-        return self.prologue_text() if callable(self.prologue_text) else self.prologue_text
-
-    def get_epilogue_text(self):
-        return self.epilogue_text() if callable(self.epilogue_text) else self.epilogue_text
-
-
-class UpdatableSubmenuItem(SubmenuItem):
-    def __init__(self, text, submenu, menu=None, should_exit=False):
-        """
-        :ivar ConsoleMenu self.submenu: The submenu to be opened when this item is selected
-        """
-        super(UpdatableSubmenuItem, self).__init__(text=text, menu=menu, should_exit=should_exit, submenu=submenu)
-
-        if menu:
-            self.get_submenu().parent = menu
-
-    def show(self, index):
-        return "%2d - %s" % (index + 1, self.get_text())
-
-    # Getters to get text in case method reference
-    def get_text(self):
-        return self.text() if callable(self.text) else self.text
-
-    def set_menu(self, menu):
-        """
-        Sets the menu of this item.
-        Should be used instead of directly accessing the menu attribute for this class.
-
-        :param ConsoleMenu menu: the menu
-        """
-        self.menu = menu
-        self.get_submenu().parent = menu
-
-    def action(self):
-        """
-        This class overrides this method
-        """
-        self.get_submenu().start()
-
-    def clean_up(self):
-        """
-        This class overrides this method
-        """
-        self.get_submenu().join()
-        self.menu.clear_screen()
-        self.menu.resume()
-
-    def get_return(self):
-        """
-        :return: The returned value in the submenu
-        """
-        return self.get_submenu().returned_value
-
-    def get_submenu(self):
-        """
-        We unwrap the submenu variable in case it is a reference to a method that returns a submenu
-        """
-        return self.submenu if not callable(self.submenu) else self.submenu()
-
-
-class UpdatableFunctionItem(FunctionItem):
-    def show(self, index):
-        return "%2d - %s" % (index + 1, self.get_text())
-
-    # Getters to get text in case method reference
-    def get_text(self):
-        return self.text() if callable(self.text) else self.text
-
-
-class MyScreen(Screen):
-    def clear(self):
-        return
 
 
 class CustomExitItem(ExitItem):
@@ -1367,6 +1299,13 @@ def main():
     global templates
 
     print("Solr releaseWizard v%s" % getScriptVersion())
+
+    try:
+      ConsoleMenu(clear_screen=True)
+    except Exception as e:
+      sys.exit("You need to install 'consolemenu' package version 0.7.1 for the Wizard to function. Please run 'pip "
+               "install -r requirements.txt'")
+
     c = parse_config()
 
     if c.dry:
@@ -1414,26 +1353,22 @@ def main():
 
     state.save()
 
-    # Smoketester requires JAVA11_HOME to point to Java11
+    # Smoketester requires JAVA21_HOME to point to Java21
     os.environ['JAVA_HOME'] = state.get_java_home()
     os.environ['JAVACMD'] = state.get_java_cmd()
 
-    global solr_news_file
-    solr_news_file = os.path.join(state.get_website_git_folder(), 'content', 'solr', 'solr_news',
-      "%s-%s-available.md" % (state.get_release_date_iso(), state.release_version.replace(".", "-")))
-
-    main_menu = UpdatableConsoleMenu(title="Solr ReleaseWizard",
+    main_menu = ConsoleMenu(title="Solr ReleaseWizard",
                             subtitle=get_releasing_text,
                             prologue_text="Welcome to the release wizard. From here you can manage the process including creating new RCs. "
                                           "All changes are persisted, so you can exit any time and continue later. Make sure to read the Help section.",
                             epilogue_text="® 2022 The Solr project. Licensed under the Apache License 2.0\nScript version v%s)" % getScriptVersion(),
-                            screen=MyScreen())
+                            clear_screen=False)
 
-    todo_menu = UpdatableConsoleMenu(title=get_releasing_text,
+    todo_menu = ConsoleMenu(title=get_releasing_text,
                             subtitle=get_subtitle,
                             prologue_text=None,
                             epilogue_text=None,
-                            screen=MyScreen())
+                            clear_screen=False)
     todo_menu.exit_item = CustomExitItem("Return")
 
     for todo_group in state.todo_groups:
@@ -1442,14 +1377,14 @@ def main():
             menu_item.set_menu(todo_menu)
             todo_menu.append_item(menu_item)
 
-    main_menu.append_item(UpdatableSubmenuItem(get_todo_menuitem_title, todo_menu, menu=main_menu))
-    main_menu.append_item(UpdatableFunctionItem(get_start_new_rc_menu_title, start_new_rc))
-    main_menu.append_item(UpdatableFunctionItem('Clear and restart current RC', state.clear_rc))
-    main_menu.append_item(UpdatableFunctionItem("Clear all state, restart the %s release" % state.release_version, reset_state))
-    main_menu.append_item(UpdatableFunctionItem('Start release for a different version', release_other_version))
-    main_menu.append_item(UpdatableFunctionItem('Generate Asciidoc guide for this release', generate_asciidoc))
-    # main_menu.append_item(UpdatableFunctionItem('Dump YAML', dump_yaml))
-    main_menu.append_item(UpdatableFunctionItem('Help', help))
+    main_menu.append_item(SubmenuItem(get_todo_menuitem_title, todo_menu, menu=main_menu))
+    main_menu.append_item(FunctionItem(get_start_new_rc_menu_title, start_new_rc))
+    main_menu.append_item(FunctionItem('Clear and restart current RC', state.clear_rc))
+    main_menu.append_item(FunctionItem("Clear all state, restart the %s release" % state.release_version, reset_state))
+    main_menu.append_item(FunctionItem('Start release for a different version', release_other_version))
+    main_menu.append_item(FunctionItem('Generate Asciidoc guide for this release', generate_asciidoc))
+    # main_menu.append_item(FunctionItem('Dump YAML', dump_yaml))
+    main_menu.append_item(FunctionItem('Help', help))
 
     main_menu.show()
 
@@ -1951,9 +1886,9 @@ def create_ical(todo): # pylint: disable=unused-argument
     return True
 
 
-today = datetime.utcnow().date()
+today = datetime.now(UTC).date()
 sundays = {(today + timedelta(days=x)): 'Sunday' for x in range(10) if (today + timedelta(days=x)).weekday() == 6}
-y = datetime.utcnow().year
+y = today.year
 years = [y, y+1]
 non_working = holidays.CA(years=years) + holidays.US(years=years) + holidays.UK(years=years) \
               + holidays.DE(years=years) + holidays.NO(years=years) + holidays.IND(years=years) + holidays.RU(years=years)
@@ -1961,7 +1896,7 @@ non_working = holidays.CA(years=years) + holidays.US(years=years) + holidays.UK(
 
 def vote_close_72h_date():
     # Voting open at least 72 hours according to ASF policy
-    return datetime.utcnow() + timedelta(hours=73)
+    return datetime.now(UTC) + timedelta(hours=73)
 
 
 def vote_close_72h_holidays():
@@ -1984,9 +1919,9 @@ def vote_close_72h_holidays():
 
 
 def prepare_announce_solr(todo): # pylint: disable=unused-argument
-    if not os.path.exists(solr_news_file):
+    if not os.path.exists(state.get_solr_news_file()):
         solr_text = expand_jinja("(( template=announce_solr ))")
-        with open(solr_news_file, 'w') as fp:
+        with open(state.get_solr_news_file(), 'w') as fp:
             fp.write(solr_text)
         # print("Wrote Solr announce draft to %s" % solr_news_file)
     else:

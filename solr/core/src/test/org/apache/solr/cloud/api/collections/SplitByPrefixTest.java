@@ -150,8 +150,7 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
 
     cluster.waitForActiveCollection(COLLECTION_NAME, 1, 1);
 
-    CloudSolrClient client = cluster.getSolrClient();
-    client.setDefaultCollection(COLLECTION_NAME);
+    CloudSolrClient client = cluster.getSolrClient(COLLECTION_NAME);
 
     // splitting an empty collection by prefix should still work (i.e. fall back to old method of
     // just dividing the hash range
@@ -165,11 +164,12 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
       splitShard.setAsyncId("SPLIT1");
     }
     splitShard.process(client);
-    // expectedReplicas==3 because original replica still exists (just inactive)
+    // expectedReplicas==2 because original replica still exists and active but its shard is
+    // inactive
     waitForState(
         "Timed out waiting for sub shards to be active.",
         COLLECTION_NAME,
-        activeClusterShape(2, 3));
+        activeClusterShape(2, 2));
 
     List<Prefix> prefixes = findPrefixes(20, 0, 0x00ffffff);
     List<Prefix> uniquePrefixes = removeDups(prefixes);
@@ -196,7 +196,7 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
     waitForState(
         "Timed out waiting for sub shards to be active.",
         COLLECTION_NAME,
-        activeClusterShape(3, 5));
+        activeClusterShape(3, 3));
 
     // OK, now let's check that the correct split point was chosen
     // We can use the router to find the shards for the middle prefixes, and they should be
@@ -218,7 +218,7 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
     Slice slice2 = slices2.iterator().next();
 
     assertTrue(slices1.size() == 1 && slices2.size() == 1);
-    assertTrue(slice1 != slice2);
+    assertNotSame(slice1, slice2);
 
     //
     // now let's add enough documents to the first prefix to get it split out on its own
@@ -239,7 +239,7 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
     waitForState(
         "Timed out waiting for sub shards to be active.",
         COLLECTION_NAME,
-        activeClusterShape(4, 7));
+        activeClusterShape(4, 4));
 
     collection = client.getClusterState().getCollection(COLLECTION_NAME);
     slices1 =
@@ -251,7 +251,7 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
     slice2 = slices2.iterator().next();
 
     assertTrue(slices1.size() == 1 && slices2.size() == 1);
-    assertTrue(slice1 != slice2);
+    assertNotSame(slice1, slice2);
 
     // Now if we call split (with splitByPrefix) on a shard that has a single prefix, it should
     // split it in half
@@ -267,14 +267,14 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
     waitForState(
         "Timed out waiting for sub shards to be active.",
         COLLECTION_NAME,
-        activeClusterShape(5, 9));
+        activeClusterShape(5, 5));
 
     collection = client.getClusterState().getCollection(COLLECTION_NAME);
     slices1 =
         collection.getRouter().getSearchSlicesSingle(uniquePrefixes.get(0).key, null, collection);
     slice1 = slices1.iterator().next();
 
-    assertTrue(slices1.size() == 2);
+    assertEquals(2, slices1.size());
 
     //
     // split one more time, this time on a partial prefix/bucket
@@ -290,13 +290,13 @@ public class SplitByPrefixTest extends SolrCloudTestCase {
     waitForState(
         "Timed out waiting for sub shards to be active.",
         COLLECTION_NAME,
-        activeClusterShape(6, 11));
+        activeClusterShape(6, 6));
 
     collection = client.getClusterState().getCollection(COLLECTION_NAME);
     slices1 =
         collection.getRouter().getSearchSlicesSingle(uniquePrefixes.get(0).key, null, collection);
 
-    assertTrue(slices1.size() == 3);
+    assertEquals(3, slices1.size());
 
     // System.err.println("### STATE=" +
     // cluster.getSolrClient().getZkStateReader().getClusterState().getCollection(COLLECTION_NAME));

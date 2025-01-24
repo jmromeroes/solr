@@ -18,7 +18,8 @@ package org.apache.solr.response;
 
 import static org.apache.solr.common.util.ByteArrayUtf8CharSequence.convertCharSeq;
 
-import java.io.FileOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -29,8 +30,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Consumer;
-import org.apache.commons.io.output.ByteArrayOutputStream;
-import org.apache.lucene.document.StoredField;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.TotalHits;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
@@ -38,7 +37,6 @@ import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.util.JavaBinCodec;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.Utf8CharSequence;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
@@ -58,15 +56,6 @@ public class BinaryResponseWriter implements BinaryQueryResponseWriter {
     if (req.getParams().getBool(CommonParams.OMIT_HEADER, false)) response.removeResponseHeader();
     try (JavaBinCodec jbc = new JavaBinCodec(resolver)) {
       jbc.setWritableDocFields(resolver).marshal(response.getValues(), out);
-    }
-  }
-
-  private static void serialize(SolrQueryResponse response, Resolver resolver, String f)
-      throws IOException {
-    try (JavaBinCodec jbc = new JavaBinCodec(resolver);
-        FileOutputStream fos = new FileOutputStream(f)) {
-      jbc.setWritableDocFields(resolver).marshal(response.getValues(), fos);
-      fos.flush();
     }
   }
 
@@ -94,16 +83,8 @@ public class BinaryResponseWriter implements BinaryQueryResponseWriter {
 
     @Override
     public Object resolve(Object o, JavaBinCodec codec) throws IOException {
-      if (o instanceof StoredField) {
-        CharSequence val = ((StoredField) o).getCharSequenceValue();
-        if (val instanceof Utf8CharSequence) {
-          codec.writeUTF8Str((Utf8CharSequence) val);
-          return null;
-        }
-      }
-      if (o instanceof ResultContext) {
+      if (o instanceof ResultContext res) {
         ReturnFields orig = returnFields;
-        ResultContext res = (ResultContext) o;
         if (res.getReturnFields() != null) {
           returnFields = res.getReturnFields();
         }
@@ -129,10 +110,9 @@ public class BinaryResponseWriter implements BinaryQueryResponseWriter {
         writeResults(ctx, codec);
         return null; // null means we completely handled it
       }
-      if (o instanceof IndexableField) {
+      if (o instanceof IndexableField f) {
         if (schema == null) schema = solrQueryRequest.getSchema();
 
-        IndexableField f = (IndexableField) o;
         SchemaField sf = schema.getFieldOrNull(f.name());
         try {
           o = DocsStreamer.getValue(sf, f);
@@ -196,14 +176,21 @@ public class BinaryResponseWriter implements BinaryQueryResponseWriter {
       }
       Resolver resolver = new Resolver(req, rsp.getReturnFields());
 
-      ByteArrayOutputStream out = new ByteArrayOutputStream();
-      try (JavaBinCodec jbc = new JavaBinCodec(resolver)) {
-        jbc.setWritableDocFields(resolver).marshal(rsp.getValues(), out);
-      }
+      try (var out =
+          new ByteArrayOutputStream() {
+            ByteArrayInputStream toInputStream() {
+              return new ByteArrayInputStream(buf, 0, count);
+            }
+          }) {
+        try (JavaBinCodec jbc = new JavaBinCodec(resolver)) {
+          jbc.setWritableDocFields(resolver).marshal(rsp.getValues(), out);
+        }
 
-      InputStream in = out.toInputStream();
-      try (JavaBinCodec jbc = new JavaBinCodec(resolver)) {
-        return (NamedList<Object>) jbc.unmarshal(in);
+        try (InputStream in = out.toInputStream()) {
+          try (JavaBinCodec jbc = new JavaBinCodec(resolver)) {
+            return (NamedList<Object>) jbc.unmarshal(in);
+          }
+        }
       }
     } catch (Exception ex) {
       throw new RuntimeException(ex);
@@ -273,8 +260,7 @@ public class BinaryResponseWriter implements BinaryQueryResponseWriter {
     @Override
     public Object getFirstValue(String name) {
       Object v = _fields.get(name);
-      if (v == null || !(v instanceof Collection)) return convertCharSeq(v);
-      Collection<?> c = (Collection<?>) v;
+      if (v == null || !(v instanceof Collection<?> c)) return convertCharSeq(v);
       if (c.size() > 0) {
         return convertCharSeq(c.iterator().next());
       }

@@ -62,17 +62,20 @@ public class SchemaManager {
 
   final SolrQueryRequest req;
   ManagedIndexSchema managedIndexSchema;
-  int timeout;
+  int updateTimeOut;
 
   public SchemaManager(SolrQueryRequest req) {
     this.req = req;
+
     // The default timeout is 10 minutes when no BaseSolrResource.UPDATE_TIMEOUT_SECS is specified
-    timeout = req.getParams().getInt(BaseSolrResource.UPDATE_TIMEOUT_SECS, 600);
+    int defaultUpdateTimeOut = Integer.getInteger("solr.schemaUpdateTimeoutSeconds", 600);
+    updateTimeOut =
+        req.getParams().getInt(BaseSolrResource.UPDATE_TIMEOUT_SECS, defaultUpdateTimeOut);
 
     // If BaseSolrResource.UPDATE_TIMEOUT_SECS=0 or -1 then end time then we'll try for 10 mins (
     // default timeout )
-    if (timeout < 1) {
-      timeout = 600;
+    if (updateTimeOut < 1) {
+      updateTimeOut = defaultUpdateTimeOut;
     }
   }
 
@@ -97,7 +100,7 @@ public class SchemaManager {
 
   private List<Map<String, Object>> doOperations(List<CommandOperation> operations)
       throws InterruptedException, IOException, KeeperException {
-    TimeOut timeOut = new TimeOut(timeout, TimeUnit.SECONDS, TimeSource.NANO_TIME);
+    TimeOut timeOut = new TimeOut(updateTimeOut, TimeUnit.SECONDS, TimeSource.NANO_TIME);
     SolrCore core = req.getCore();
     String errorMsg = "Unable to persist managed schema. ";
     List<Map<String, Object>> errors = Collections.emptyList();
@@ -117,8 +120,7 @@ public class SchemaManager {
         errors = CommandOperation.captureErrors(operations);
         if (!errors.isEmpty()) break;
         SolrResourceLoader loader = req.getCore().getResourceLoader();
-        if (loader instanceof ZkSolrResourceLoader) {
-          ZkSolrResourceLoader zkLoader = (ZkSolrResourceLoader) loader;
+        if (loader instanceof ZkSolrResourceLoader zkLoader) {
           StringWriter sw = new StringWriter();
           try {
             managedIndexSchema.persist(sw);
@@ -481,8 +483,7 @@ public class SchemaManager {
 
     SolrResourceLoader resourceLoader = core.getResourceLoader();
     String schemaResourceName = core.getLatestSchema().getResourceName();
-    if (resourceLoader instanceof ZkSolrResourceLoader) {
-      final ZkSolrResourceLoader zkLoader = (ZkSolrResourceLoader) resourceLoader;
+    if (resourceLoader instanceof ZkSolrResourceLoader zkLoader) {
       SolrZkClient zkClient = zkLoader.getZkController().getZkClient();
       String managedSchemaPath = zkLoader.getConfigSetZkPath() + "/" + schemaResourceName;
       try {
@@ -505,7 +506,7 @@ public class SchemaManager {
         // use current schema
         return (ManagedIndexSchema) core.getLatestSchema();
       }
-      schemaResourceName = managedSchemaPath.substring(managedSchemaPath.lastIndexOf("/") + 1);
+      schemaResourceName = managedSchemaPath.substring(managedSchemaPath.lastIndexOf('/') + 1);
       InputStream in = resourceLoader.openResource(schemaResourceName);
       if (in instanceof ZkSolrResourceLoader.ZkByteArrayInputStream) {
         int version = ((ZkSolrResourceLoader.ZkByteArrayInputStream) in).getStat().getVersion();

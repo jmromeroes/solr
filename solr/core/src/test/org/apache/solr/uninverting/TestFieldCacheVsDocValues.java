@@ -38,6 +38,7 @@ import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
@@ -174,8 +175,9 @@ public class TestFieldCacheVsDocValues extends SolrTestCase {
           TestUtil.checkReader(ar);
 
           BinaryDocValues s = FieldCache.DEFAULT.getTerms(ar, "field");
+          StoredFields storedFields = ar.storedFields();
           for (int docID = 0; docID < docBytes.size(); docID++) {
-            Document doc = ar.document(docID);
+            Document doc = storedFields.document(docID);
             assertEquals(docID, s.nextDoc());
             BytesRef bytes = s.binaryValue();
             byte[] expected = docBytes.get(Integer.parseInt(doc.get("id")));
@@ -320,7 +322,7 @@ public class TestFieldCacheVsDocValues extends SolrTestCase {
     int numDocs = atLeast(300);
     // numDocs should be always > 256 so that in case of a codec that optimizes
     // for numbers of values <= 256, all storage layouts are tested
-    assert numDocs > 256;
+    assertTrue(numDocs > 256);
     for (int i = 0; i < numDocs; i++) {
       idField.setStringValue(Integer.toString(i));
       long value = longs.next();

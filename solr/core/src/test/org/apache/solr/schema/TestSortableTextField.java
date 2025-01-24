@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.SortedSetDocValuesField;
@@ -45,7 +44,7 @@ import org.junit.BeforeClass;
 public class TestSortableTextField extends SolrTestCaseJ4 {
 
   protected static final String BIG_CONST =
-      StringUtils.repeat("x", SortableTextField.DEFAULT_MAX_CHARS_FOR_DOC_VALUES);
+      "x".repeat(SortableTextField.DEFAULT_MAX_CHARS_FOR_DOC_VALUES);
 
   @BeforeClass
   public static void create() throws Exception {
@@ -429,16 +428,14 @@ public class TestSortableTextField extends SolrTestCaseJ4 {
     for (String n : Arrays.asList("keyword_stxt", "whitespace_max0_stxt", "whitespace_max6_stxt")) {
       {
         FieldType ft = h.getCore().getLatestSchema().getFieldTypeByName(n);
-        assertEquals(
+        assertFalse(
             "type " + ft.getTypeName() + " should not default to useDocValuesAsStored",
-            false,
             ft.useDocValuesAsStored());
       }
       {
         SchemaField sf = h.getCore().getLatestSchema().getField(n);
-        assertEquals(
+        assertFalse(
             "field " + sf.getName() + " should not default to useDocValuesAsStored",
-            false,
             sf.useDocValuesAsStored());
       }
     }
@@ -450,9 +447,8 @@ public class TestSortableTextField extends SolrTestCaseJ4 {
       if (entry.getKey().endsWith("_has_usedvs")) {
         num_types_found++;
         FieldType ft = entry.getValue();
-        assertEquals(
+        assertTrue(
             "type " + ft.getTypeName() + " has unexpected useDocValuesAsStored value",
-            true,
             ft.useDocValuesAsStored());
       }
     }
@@ -535,7 +531,7 @@ public class TestSortableTextField extends SolrTestCaseJ4 {
     // check all our expected docs can be found (with the expected values)
     assertU(commit());
     xpaths.add("//*[@numFound='" + xpaths.size() + "']");
-    assertQ(req("q", "*:*", "fl", "*"), xpaths.toArray(new String[xpaths.size()]));
+    assertQ(req("q", "*:*", "fl", "*"), xpaths.toArray(new String[0]));
   }
 
   /**

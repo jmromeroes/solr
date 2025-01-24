@@ -16,9 +16,9 @@
  */
 package org.apache.solr.schema;
 
-import java.io.File;
 import java.io.IOException;
-import org.apache.commons.io.FileUtils;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrException;
 import org.junit.Test;
@@ -26,10 +26,9 @@ import org.junit.Test;
 public class ExternalFileFieldSortTest extends SolrTestCaseJ4 {
 
   static void updateExternalFile() throws IOException {
-    final String testHome = SolrTestCaseJ4.getFile("solr/collection1").getParent();
+    final Path testHome = SolrTestCaseJ4.getFile("solr/collection1").getParent();
     String filename = "external_eff";
-    FileUtils.copyFile(
-        new File(testHome + "/" + filename), new File(h.getCore().getDataDir() + "/" + filename));
+    Files.copy(testHome.resolve(filename), Path.of(h.getCore().getDataDir(), filename));
   }
 
   private void addDocuments() {

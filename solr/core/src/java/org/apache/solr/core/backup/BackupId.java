@@ -62,8 +62,7 @@ public class BackupId implements Comparable<BackupId> {
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-    BackupId backupId = (BackupId) o;
+    if (!(o instanceof BackupId backupId)) return false;
     return id == backupId.id;
   }
 

@@ -18,7 +18,6 @@ package org.apache.solr.search;
 
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Metric;
-import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.util.Date;
@@ -174,12 +173,8 @@ public class TestIndexSearcher extends SolrTestCaseJ4 {
     IndexReaderContext rCtx6 = sr6.getSearcher().getTopReaderContext();
     assertEquals(
         1, rCtx6.leaves().get(0).reader().numDocs()); // only a single doc left in the first segment
-    assertTrue(
-        !rCtx5
-            .leaves()
-            .get(0)
-            .reader()
-            .equals(rCtx6.leaves().get(0).reader())); // readers now different
+    assertNotEquals(
+        rCtx5.leaves().get(0).reader(), rCtx6.leaves().get(0).reader()); // readers now different
 
     sr5.close();
     sr6.close();
@@ -247,7 +242,7 @@ public class TestIndexSearcher extends SolrTestCaseJ4 {
           cores.create(
               "core1",
               cd.getInstanceDir(),
-              ImmutableMap.of("config", "solrconfig-searcher-listeners1.xml"),
+              Map.of("config", "solrconfig-searcher-listeners1.xml"),
               false);
 
       // validate that the new core was created with the correct solrconfig
@@ -307,7 +302,7 @@ public class TestIndexSearcher extends SolrTestCaseJ4 {
           cores.create(
               "core1",
               cd.getInstanceDir(),
-              ImmutableMap.of("config", "solrconfig-searcher-listeners1.xml"),
+              Map.of("config", "solrconfig-searcher-listeners1.xml"),
               false);
       coreCreated = true;
 
@@ -318,6 +313,7 @@ public class TestIndexSearcher extends SolrTestCaseJ4 {
 
       Thread t =
           new Thread() {
+            @Override
             public void run() {
               try {
                 doQuery(newCore);
@@ -379,7 +375,7 @@ public class TestIndexSearcher extends SolrTestCaseJ4 {
           cores.create(
               "core1",
               cd.getInstanceDir(),
-              ImmutableMap.of("config", "solrconfig-searcher-listeners1.xml"),
+              Map.of("config", "solrconfig-searcher-listeners1.xml"),
               false);
       coreCreated = true;
 
@@ -390,6 +386,7 @@ public class TestIndexSearcher extends SolrTestCaseJ4 {
 
       Thread t =
           new Thread() {
+            @Override
             public void run() {
               try {
                 doQuery(newCore);
@@ -495,8 +492,8 @@ public class TestIndexSearcher extends SolrTestCaseJ4 {
     @Override
     public void newSearcher(SolrIndexSearcher newSearcher, SolrIndexSearcher currentSearcher) {
       try {
-        assert currentSearcher == null
-            : "SlowSearcherListener should only be used as FirstSearcherListener";
+        assertNull(
+            "SlowSearcherListener should only be used as FirstSearcherListener", currentSearcher);
         // simulate a slow searcher listener
         latch.await(10, TimeUnit.SECONDS);
       } catch (InterruptedException e) {

@@ -144,14 +144,23 @@ public abstract class CoreAdminParams {
   /** A parameter to specify the name of the commit to be stored during the backup operation. */
   public static final String COMMIT_NAME = "commitName";
 
+  /** A parameter to specify the name of the snapshot to be stored during the backup operation. */
+  public static final String SNAPSHOT_NAME = "snapshotName";
+
   /** A boolean parameter specifying if a core is being created as part of a new collection */
   public static final String NEW_COLLECTION = "newCollection";
+
+  /** A parameter to specify if Configsets should be included in the backup or not */
+  public static final String BACKUP_CONFIGSET = "backupConfigset";
 
   /**
    * Tells the CoreAdminHandler that the new Core will be a replica of a particular {@link
    * org.apache.solr.common.cloud.Replica.Type}
    */
   public static final String REPLICA_TYPE = "replicaType";
+
+  /** Whether the request that generated the admin command is trusted */
+  public static final String TRUSTED = "trusted";
 
   public enum CoreAdminAction {
     STATUS(true),
@@ -173,10 +182,10 @@ public abstract class CoreAdminParams {
     REJOINLEADERELECTION,
     // internal API used by force shard leader election
     FORCEPREPAREFORLEADERSHIP,
-    INVOKE,
-    // Internal APIs to backup and restore a core
+    // Internal APIs to back up and restore a core
     BACKUPCORE,
     RESTORECORE,
+    INSTALLCOREDATA,
     CREATESNAPSHOT,
     DELETESNAPSHOT,
     LISTSNAPSHOTS;

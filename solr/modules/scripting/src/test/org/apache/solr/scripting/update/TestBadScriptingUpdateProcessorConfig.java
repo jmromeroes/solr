@@ -32,7 +32,7 @@ public class TestBadScriptingUpdateProcessorConfig extends SolrTestCaseJ4 {
     assertConfigs(
         "bad-solrconfig-bogus-scriptengine-name.xml",
         "schema.xml",
-        getFile("scripting/solr/collection1").getParent(),
+        getFile("scripting/solr/collection1").getParent().toString(),
         "giberish");
   }
 
@@ -42,7 +42,7 @@ public class TestBadScriptingUpdateProcessorConfig extends SolrTestCaseJ4 {
     assertConfigs(
         "bad-solrconfig-missing-scriptfile.xml",
         "schema.xml",
-        getFile("scripting/solr/collection1").getParent(),
+        getFile("scripting/solr/collection1").getParent().toString(),
         "a-file-name-that-does-not-exist.js");
   }
 
@@ -52,7 +52,7 @@ public class TestBadScriptingUpdateProcessorConfig extends SolrTestCaseJ4 {
     assertConfigs(
         "bad-solrconfig-invalid-scriptfile.xml",
         "schema.xml",
-        getFile("scripting/solr/collection1").getParent(),
+        getFile("scripting/solr/collection1").getParent().toString(),
         "invalid.script.xml");
   }
 
@@ -94,7 +94,7 @@ public class TestBadScriptingUpdateProcessorConfig extends SolrTestCaseJ4 {
 
   private static boolean matches(Exception e, String errString) {
     for (Throwable t = e; t != null; t = t.getCause()) {
-      if (t.getMessage() != null && -1 != t.getMessage().indexOf(errString)) return true;
+      if (t.getMessage() != null && t.getMessage().contains(errString)) return true;
     }
     return false;
   }

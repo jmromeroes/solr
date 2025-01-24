@@ -24,6 +24,7 @@ import java.util.Map;
 import org.apache.calcite.linq4j.Enumerator;
 import org.apache.solr.client.solrj.io.Tuple;
 import org.apache.solr.client.solrj.io.stream.TupleStream;
+import org.apache.solr.common.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,11 +43,11 @@ class SolrEnumerator implements Enumerator<Object> {
    * @param fields Fields to get from each Tuple
    */
   SolrEnumerator(TupleStream tupleStream, List<Map.Entry<String, Class<?>>> fields) {
-
     this.tupleStream = tupleStream;
     try {
       this.tupleStream.open();
     } catch (IOException e) {
+      IOUtils.closeQuietly(tupleStream);
       throw new RuntimeException(e);
     }
     this.fields = fields;
@@ -58,6 +59,7 @@ class SolrEnumerator implements Enumerator<Object> {
    *
    * @return A new row from the results
    */
+  @Override
   public Object current() {
     if (fields.size() == 1) {
       return this.getter(current, fields.get(0));
@@ -111,6 +113,7 @@ class SolrEnumerator implements Enumerator<Object> {
     return val;
   }
 
+  @Override
   public boolean moveNext() {
     try {
       Tuple tuple = this.tupleStream.read();
@@ -126,10 +129,12 @@ class SolrEnumerator implements Enumerator<Object> {
     }
   }
 
+  @Override
   public void reset() {
     throw new UnsupportedOperationException();
   }
 
+  @Override
   public void close() {
     if (this.tupleStream != null) {
       try {

@@ -16,6 +16,8 @@
  */
 package org.apache.solr.search.grouping;
 
+import static org.apache.solr.response.SolrQueryResponse.partialResultsStatus;
+
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
@@ -34,6 +36,8 @@ import org.apache.lucene.search.grouping.AllGroupHeadsCollector;
 import org.apache.lucene.search.grouping.TermGroupSelector;
 import org.apache.lucene.search.grouping.ValueSourceGroupSelector;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.BitDocSet;
@@ -119,10 +123,9 @@ public class CommandHandler {
   private final QueryCommand queryCommand;
   private final List<Command<?>> commands;
   private final SolrIndexSearcher searcher;
-  private final boolean needDocset;
+  private final boolean needDocSet;
   private final boolean truncateGroups;
   private final boolean includeHitCount;
-  private boolean partialResults = false;
   private int totalHitCount;
 
   private DocSet docSet;
@@ -131,13 +134,13 @@ public class CommandHandler {
       QueryCommand queryCommand,
       List<Command<?>> commands,
       SolrIndexSearcher searcher,
-      boolean needDocset,
+      boolean needDocSet,
       boolean truncateGroups,
       boolean includeHitCount) {
     this.queryCommand = queryCommand;
     this.commands = commands;
     this.searcher = searcher;
-    this.needDocset = needDocset;
+    this.needDocSet = needDocSet;
     this.truncateGroups = truncateGroups;
     this.includeHitCount = includeHitCount;
   }
@@ -149,13 +152,12 @@ public class CommandHandler {
       collectors.addAll(command.create());
     }
 
-    ProcessedFilter filter =
-        searcher.getProcessedFilter(queryCommand.getFilter(), queryCommand.getFilterList());
+    ProcessedFilter filter = searcher.getProcessedFilter(queryCommand.getFilterList());
     Query query = QueryUtils.makeQueryable(queryCommand.getQuery());
 
     if (truncateGroups) {
       docSet = computeGroupedDocSet(query, filter, collectors);
-    } else if (needDocset) {
+    } else if (needDocSet) {
       docSet = computeDocSet(query, filter, collectors);
     } else if (!collectors.isEmpty()) {
       searchWithTimeLimiter(
@@ -203,7 +205,7 @@ public class CommandHandler {
     } else {
       collectors.add(allGroupHeadsCollector);
       searchWithTimeLimiter(
-          query, filter, MultiCollector.wrap(collectors.toArray(new Collector[collectors.size()])));
+          query, filter, MultiCollector.wrap(collectors.toArray(new Collector[0])));
     }
 
     return new BitDocSet(allGroupHeadsCollector.retrieveGroupHeads(searcher.maxDoc()));
@@ -225,7 +227,15 @@ public class CommandHandler {
     if (docSet != null) {
       queryResult.setDocSet(docSet);
     }
-    queryResult.setPartialResults(partialResults);
+    if (queryResult.isPartialResults()) {
+      queryResult.setPartialResults(
+          partialResultsStatus(
+              SolrRequestInfo.getRequest()
+                  .map(
+                      solrQueryRequest ->
+                          SolrQueryRequest.disallowPartialResults(solrQueryRequest.getParams()))
+                  .orElse(false)));
+    }
     return transformer.transform(commands);
   }
 
@@ -257,7 +267,6 @@ public class CommandHandler {
       searcher.search(query, collector);
     } catch (TimeLimitingCollector.TimeExceededException
         | ExitableDirectoryReader.ExitingReaderException x) {
-      partialResults = true;
       log.warn("Query: {}; ", query, x);
     }
 

@@ -19,25 +19,24 @@ package org.apache.solr.servlet;
 import static org.apache.solr.common.params.CommonParams.PATH;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
 import java.lang.invoke.MethodHandles;
-import java.net.URL;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import javax.servlet.MultipartConfigElement;
@@ -56,6 +55,7 @@ import org.apache.solr.common.util.CommandOperation;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.common.util.ContentStreamBase;
 import org.apache.solr.common.util.FastInputStream;
+import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.RequestHandlers;
 import org.apache.solr.core.SolrConfig;
@@ -63,9 +63,6 @@ import org.apache.solr.core.SolrCore;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequestBase;
 import org.apache.solr.util.RTimerTree;
-import org.eclipse.jetty.http.HttpFields;
-import org.eclipse.jetty.http.MimeTypes;
-import org.eclipse.jetty.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -116,8 +113,9 @@ public class SolrRequestParsers {
 
       formUploadLimitKB = globalConfig.getFormUploadLimitKB();
 
-      enableRemoteStreams = globalConfig.isEnableRemoteStreams();
-      enableStreamBody = globalConfig.isEnableStreamBody();
+      // security risks; disabled by default
+      enableRemoteStreams = Boolean.getBoolean("solr.enableRemoteStreaming");
+      enableStreamBody = Boolean.getBoolean("solr.enableStreamBody");
 
       // Let this filter take care of /select?xxx format
       handleSelect = globalConfig.isHandleSelect();
@@ -170,7 +168,8 @@ public class SolrRequestParsers {
     ArrayList<ContentStream> streams = new ArrayList<>(1);
     SolrParams params = parser.parseParamsAndFillStreams(req, streams);
 
-    SolrQueryRequest sreq = buildRequestFrom(core, params, streams, getRequestTimer(req), req);
+    SolrQueryRequest sreq =
+        buildRequestFrom(core, params, streams, getRequestTimer(req), req, null);
 
     // Handlers and login will want to know the path. If it contains a ':'
     // the handler could use it for RESTful URLs
@@ -186,16 +185,30 @@ public class SolrRequestParsers {
   /** For embedded Solr use; not related to HTTP. */
   public SolrQueryRequest buildRequestFrom(
       SolrCore core, SolrParams params, Collection<ContentStream> streams) throws Exception {
-    return buildRequestFrom(core, params, streams, new RTimerTree(), null);
+    return buildRequestFrom(core, params, streams, new RTimerTree(), null, null);
+  }
+
+  public SolrQueryRequest buildRequestFrom(
+      SolrCore core, SolrParams params, Collection<ContentStream> streams, Principal principal)
+      throws Exception {
+    return buildRequestFrom(core, params, streams, new RTimerTree(), null, principal);
   }
 
   private SolrQueryRequest buildRequestFrom(
       SolrCore core,
       SolrParams params,
-      Collection<ContentStream> streams,
+      Collection<ContentStream> streams, // might be added to but caller shouldn't depend on it
       RTimerTree requestTimer,
-      final HttpServletRequest req)
+      final HttpServletRequest req,
+      final Principal principal)
       throws Exception {
+    // ensure streams is non-null and mutable so we can easily add to it
+    if (streams == null) {
+      streams = new ArrayList<>();
+    } else if (!(streams instanceof ArrayList)) {
+      streams = new ArrayList<>(streams);
+    }
+
     // The content type will be applied to all streaming content
     String contentType = params.get(CommonParams.STREAM_CONTENTTYPE);
 
@@ -206,7 +219,7 @@ public class SolrRequestParsers {
         throw new SolrException(ErrorCode.BAD_REQUEST, "Remote Streaming is disabled.");
       }
       for (final String url : strs) {
-        ContentStreamBase stream = new ContentStreamBase.URLStream(new URL(url));
+        ContentStreamBase stream = new ContentStreamBase.URLStream(URI.create(url).toURL());
         if (contentType != null) {
           stream.setContentType(contentType);
         }
@@ -223,7 +236,7 @@ public class SolrRequestParsers {
             "Remote Streaming is disabled. See https://solr.apache.org/guide/solr/latest/configuration-guide/requestdispatcher.html for help");
       }
       for (final String file : strs) {
-        ContentStreamBase stream = new ContentStreamBase.FileStream(new File(file));
+        ContentStreamBase stream = new ContentStreamBase.FileStream(Path.of(file));
         if (contentType != null) {
           stream.setContentType(contentType);
         }
@@ -254,7 +267,11 @@ public class SolrRequestParsers {
         new SolrQueryRequestBase(core, params, requestTimer) {
           @Override
           public Principal getUserPrincipal() {
-            return req == null ? null : req.getUserPrincipal();
+            if (principal != null) {
+              return principal;
+            } else {
+              return req == null ? null : req.getUserPrincipal();
+            }
           }
 
           @Override
@@ -283,7 +300,7 @@ public class SolrRequestParsers {
             return httpSolrCall;
           }
         };
-    if (streams != null && streams.size() > 0) {
+    if (!streams.isEmpty()) {
       q.setContentStreams(streams);
     }
     return q;
@@ -292,6 +309,7 @@ public class SolrRequestParsers {
   private static HttpSolrCall getHttpSolrCall(HttpServletRequest req) {
     return req == null ? null : (HttpSolrCall) req.getAttribute(HttpSolrCall.class.getName());
   }
+
   /** Given a url-encoded query string (UTF-8), map it into solr params */
   public static MultiMapSolrParams parseQueryString(String queryString) {
     Map<String, String[]> map = new HashMap<>();
@@ -356,7 +374,7 @@ public class SolrRequestParsers {
       boolean supportCharsetParam)
       throws IOException {
     CharsetDecoder charsetDecoder = supportCharsetParam ? null : getCharsetDecoder(charset);
-    final LinkedList<Object> buffer = supportCharsetParam ? new LinkedList<>() : null;
+    final List<Object> buffer = supportCharsetParam ? new ArrayList<>() : null;
     long len = 0L, keyPos = 0L, valuePos = 0L;
     final ByteArrayOutputStream keyStream = new ByteArrayOutputStream(),
         valueStream = new ByteArrayOutputStream();
@@ -476,9 +494,7 @@ public class SolrRequestParsers {
   }
 
   private static void decodeBuffer(
-      final LinkedList<Object> input,
-      final Map<String, String[]> map,
-      CharsetDecoder charsetDecoder) {
+      final List<Object> input, final Map<String, String[]> map, CharsetDecoder charsetDecoder) {
     for (final Iterator<Object> it = input.iterator(); it.hasNext(); ) {
       final byte[] keyBytes = (byte[]) it.next();
       it.remove();
@@ -528,6 +544,10 @@ public class SolrRequestParsers {
 
   public void setAddRequestHeadersToContext(boolean addRequestHeadersToContext) {
     this.addHttpRequestToContext = addRequestHeadersToContext;
+  }
+
+  public boolean isEnableRemoteStreams() {
+    return enableRemoteStreams;
   }
 
   // -----------------------------------------------------------------
@@ -624,9 +644,10 @@ public class SolrRequestParsers {
         throw new SolrException(
             ErrorCode.BAD_REQUEST, "Not multipart content! " + req.getContentType());
       }
-      // Magic way to tell Jetty dynamically we want multi-part processing.  "Request" here is a
-      // Jetty class
-      req.setAttribute(Request.MULTIPART_CONFIG_ELEMENT, multipartConfigElement);
+      // Magic way to tell Jetty dynamically we want multi-part processing.
+      // This is taken from:
+      // https://github.com/eclipse/jetty.project/blob/jetty-10.0.12/jetty-server/src/main/java/org/eclipse/jetty/server/Request.java#L144
+      req.setAttribute("org.eclipse.jetty.multipartConfig", multipartConfigElement);
 
       MultiMapSolrParams params = parseQueryString(req.getQueryString());
 
@@ -635,20 +656,13 @@ public class SolrRequestParsers {
       for (Part part : req.getParts()) {
         if (part.getSubmittedFileName() == null) { // thus a form field and not file upload
           // If it's a form field, put it in our parameter map
-          String partAsString =
-              org.apache.commons.io.IOUtils.toString(new PartContentStream(part).getReader());
+          String partAsString = StrUtils.stringFromReader(new PartContentStream(part).getReader());
           MultiMapSolrParams.addParam(part.getName().trim(), partAsString, params.getMap());
         } else { // file upload
           streams.add(new PartContentStream(part));
         }
       }
       return params;
-    }
-
-    static boolean isMultipart(HttpServletRequest req) {
-      // Jetty utilities
-      return MimeTypes.Type.MULTIPART_FORM_DATA.is(
-          HttpFields.valueParameters(req.getContentType(), null));
     }
 
     /** Wrap a MultiPart-{@link Part} as a {@link ContentStream} */
@@ -670,9 +684,14 @@ public class SolrRequestParsers {
     }
   }
 
+  public static boolean isMultipart(HttpServletRequest req) {
+    String ct = req.getContentType();
+    return ct != null && ct.startsWith("multipart/form-data");
+  }
+
   /** Clean up any files created by MultiPartInputStream. */
   static void cleanupMultipartFiles(HttpServletRequest request) {
-    if (!MultipartRequestParser.isMultipart(request)) {
+    if (!SolrRequestParsers.isMultipart(request)) {
       return;
     }
 
@@ -840,11 +859,16 @@ public class SolrRequestParsers {
           return parseQueryString(req.getQueryString());
         }
 
+        // This happens when Jetty redirected a request that initially had no content body
+        if (contentType.equals("application/octet-stream") && req.getContentLength() == 0) {
+          return parseQueryString(req.getQueryString());
+        }
+
         // OK, we have a BODY at this point
 
         boolean schemaRestPath = false;
         int idx = uri.indexOf("/schema");
-        if (idx >= 0 && uri.endsWith("/schema") || uri.contains("/schema/")) {
+        if ((idx >= 0 && uri.endsWith("/schema")) || uri.contains("/schema/")) {
           schemaRestPath = true;
         }
 
@@ -872,7 +896,7 @@ public class SolrRequestParsers {
         return formdata.parseParamsAndFillStreams(req, streams, input);
       }
 
-      if (MultipartRequestParser.isMultipart(req)) {
+      if (isMultipart(req)) {
         return multipart.parseParamsAndFillStreams(req, streams);
       }
 

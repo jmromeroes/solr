@@ -26,8 +26,7 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.NamedList;
 
 /**
- * Simply puts the entire response into an entry in a NamedList. This parser isn't parse response
- * into a QueryResponse.
+ * A special parser that puts the entire response into a string "response" field in the NamedList.
  */
 public class NoOpResponseParser extends ResponseParser {
 
@@ -66,7 +65,7 @@ public class NoOpResponseParser extends ResponseParser {
   public NamedList<Object> processResponse(InputStream body, String encoding) {
     try {
       StringWriter writer = new StringWriter();
-      new InputStreamReader(body, encoding).transferTo(writer);
+      new InputStreamReader(body, encoding == null ? "UTF-8" : encoding).transferTo(writer);
       String output = writer.toString();
       NamedList<Object> list = new NamedList<>();
       list.add("response", output);

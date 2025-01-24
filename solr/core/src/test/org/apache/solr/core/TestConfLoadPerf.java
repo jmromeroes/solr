@@ -61,9 +61,9 @@ public class TestConfLoadPerf extends SolrTestCaseJ4 {
             container.solrHome,
             container.getResourceLoader().classLoader) {
 
-          @Override
-          public CoreContainer getCoreContainer() {
-            return container;
+          // instance initializer block
+          {
+            setCoreContainer(container);
           }
 
           @Override
@@ -82,9 +82,11 @@ public class TestConfLoadPerf extends SolrTestCaseJ4 {
     long heapSize = Runtime.getRuntime().totalMemory();
     List<SolrConfig> allConfigs = new ArrayList<>();
     long startTime = System.currentTimeMillis();
-    for (int i = 0; i < 100; i++) {
-      allConfigs.add(SolrConfig.readFromResourceLoader(srl, "solrconfig.xml", true, null));
+    int numReads = 100;
+    for (int i = 0; i < numReads; i++) {
+      allConfigs.add(SolrConfig.readFromResourceLoader(srl, "solrconfig.xml", null));
     }
+    assertEquals(numReads, allConfigs.size());
     System.gc();
     System.out.println("TIME_TAKEN : " + (System.currentTimeMillis() - startTime));
     System.out.println("HEAP_SIZE : " + ((Runtime.getRuntime().totalMemory() - heapSize) / (1024)));

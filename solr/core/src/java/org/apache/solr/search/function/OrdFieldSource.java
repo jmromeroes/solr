@@ -73,9 +73,7 @@ public class OrdFieldSource extends ValueSource {
     final int off = readerContext.docBase;
     final LeafReader r;
     Object o = context.get("searcher");
-    if (o instanceof SolrIndexSearcher) {
-      @SuppressWarnings("resource")
-      final SolrIndexSearcher is = (SolrIndexSearcher) o;
+    if (o instanceof @SuppressWarnings("resource") SolrIndexSearcher is) {
       SchemaField sf = is.getSchema().getFieldOrNull(field);
       if (sf != null && sf.getType().isPointField()) {
         throw new SolrException(
@@ -124,7 +122,7 @@ public class OrdFieldSource extends ValueSource {
         }
       }
 
-      protected String toTerm(String readableValue) {
+      private String toTerm(String readableValue) {
         return readableValue;
       }
 
@@ -170,9 +168,7 @@ public class OrdFieldSource extends ValueSource {
 
   @Override
   public boolean equals(Object o) {
-    return o != null
-        && o.getClass() == OrdFieldSource.class
-        && this.field.equals(((OrdFieldSource) o).field);
+    return o instanceof OrdFieldSource && this.field.equals(((OrdFieldSource) o).field);
   }
 
   private static final int hcode = OrdFieldSource.class.hashCode();

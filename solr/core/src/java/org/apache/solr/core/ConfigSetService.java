@@ -23,17 +23,17 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.apache.solr.cloud.ZkConfigSetService;
 import org.apache.solr.cloud.ZkController;
-import org.apache.solr.cloud.ZkSolrResourceLoader;
 import org.apache.solr.common.ConfigNode;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.StringUtils;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.handler.admin.ConfigSetsHandler;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.IndexSchemaFactory;
@@ -117,7 +117,7 @@ public abstract class ConfigSetService {
             "intended to be the default. Current 'solr.default.confdir' value:",
             System.getProperty(SolrDispatchFilter.SOLR_DEFAULT_CONFDIR_ATTRIBUTE));
       } else {
-        this.uploadConfig(ConfigSetsHandler.DEFAULT_CONFIGSET_NAME, configDirPath);
+        this.uploadConfig(ConfigSetsHandler.DEFAULT_CONFIGSET_NAME, configDirPath, true);
       }
     }
   }
@@ -132,7 +132,7 @@ public abstract class ConfigSetService {
     String confName =
         System.getProperty(
             ZkController.COLLECTION_PARAM_PREFIX + ZkController.CONFIGNAME_PROP, "configuration1");
-    this.uploadConfig(confName, configPath);
+    this.uploadConfig(confName, configPath, true);
   }
 
   /**
@@ -213,11 +213,48 @@ public abstract class ConfigSetService {
     for (CoreDescriptor cd : cds) {
       String coreName = cd.getName();
       String confName = cd.getCollectionName();
-      if (StringUtils.isEmpty(confName)) confName = coreName;
+      if (StrUtils.isNullOrEmpty(confName)) confName = coreName;
       Path udir = cd.getInstanceDir().resolve("conf");
       log.info("Uploading directory {} with name {} for solrCore {}", udir, confName, coreName);
-      cc.getConfigSetService().uploadConfig(confName, udir);
+      cc.getConfigSetService().uploadConfig(confName, udir, true);
     }
+  }
+
+  /**
+   * Return whether the given configSet is trusted.
+   *
+   * @param name name of the configSet
+   */
+  public boolean isConfigSetTrusted(String name) throws IOException {
+    Map<String, Object> contentMap = getConfigMetadata(name);
+    return (boolean) contentMap.getOrDefault("trusted", true);
+  }
+
+  /**
+   * Return whether the configSet used for the given resourceLoader is trusted.
+   *
+   * @param coreLoader resourceLoader for a core
+   */
+  public boolean isConfigSetTrusted(SolrResourceLoader coreLoader) throws IOException {
+    // ConfigSet flags are loaded from the metadata of the ZK node of the configset. (For the
+    // ZKConfigSetService)
+    NamedList<?> flags = loadConfigSetFlags(coreLoader);
+
+    // Trust if there is no trusted flag (i.e. the ConfigSetApi was not used for this configSet)
+    // or if the trusted flag is set to "true".
+    return (flags == null || flags.get("trusted") == null || flags.getBooleanArg("trusted"));
+  }
+
+  /**
+   * Change the trust of the given configSet.
+   *
+   * @param name name of the configSet
+   * @param isTrusted whether the given configSet should be trusted or not
+   */
+  public void setConfigSetTrust(String name, boolean isTrusted) throws IOException {
+    Map<String, Object> contentMap = new HashMap<>(getConfigMetadata(name));
+    contentMap.put("trusted", isTrusted);
+    setConfigMetadata(name, contentMap);
   }
 
   /**
@@ -233,18 +270,9 @@ public abstract class ConfigSetService {
     try {
       // ConfigSet properties are loaded from ConfigSetProperties.DEFAULT_FILENAME file.
       NamedList<?> properties = loadConfigSetProperties(dcore, coreLoader);
-      // ConfigSet flags are loaded from the metadata of the ZK node of the configset.
-      NamedList<?> flags = loadConfigSetFlags(dcore, coreLoader);
+      boolean trusted = isConfigSetTrusted(coreLoader);
 
-      boolean trusted =
-          (coreLoader instanceof ZkSolrResourceLoader
-                  && flags != null
-                  && flags.get("trusted") != null
-                  && !flags.getBooleanArg("trusted"))
-              ? false
-              : true;
-
-      SolrConfig solrConfig = createSolrConfig(dcore, coreLoader, trusted);
+      SolrConfig solrConfig = createSolrConfig(dcore, coreLoader);
       return new ConfigSet(
           configSetName(dcore),
           solrConfig,
@@ -286,13 +314,12 @@ public abstract class ConfigSetService {
    *
    * @param cd the core's CoreDescriptor
    * @param loader the core's resource loader
-   * @param isTrusted is the configset trusted?
    * @return a SolrConfig object
    */
-  protected SolrConfig createSolrConfig(
-      CoreDescriptor cd, SolrResourceLoader loader, boolean isTrusted) {
+  protected SolrConfig createSolrConfig(CoreDescriptor cd, SolrResourceLoader loader)
+      throws IOException {
     return SolrConfig.readFromResourceLoader(
-        loader, cd.getConfigName(), isTrusted, cd.getSubstitutableProperties());
+        loader, cd.getConfigName(), cd.getSubstitutableProperties());
   }
 
   /**
@@ -364,8 +391,7 @@ public abstract class ConfigSetService {
 
   /** Return the ConfigSet flags or null if none. */
   // TODO should fold into configSetProps -- SOLR-14059
-  protected NamedList<Object> loadConfigSetFlags(CoreDescriptor cd, SolrResourceLoader loader)
-      throws IOException {
+  protected NamedList<Object> loadConfigSetFlags(SolrResourceLoader loader) throws IOException {
     return null;
   }
 
@@ -392,14 +418,27 @@ public abstract class ConfigSetService {
    * @param dir {@link Path} to the files
    * @throws IOException if an I/O error occurs or the path does not exist
    */
-  public abstract void uploadConfig(String configName, Path dir) throws IOException;
+  protected abstract void uploadConfig(String configName, Path dir) throws IOException;
 
   /**
-   * Upload a file to config If file does not exist, it will be uploaded If createNew param is set
-   * to true then file be overwritten
+   * Upload files from a given path to config, which will explicitly be trusted or not.
+   *
+   * @param configName the config name
+   * @param dir {@link Path} to the files
+   * @param isTrusted whether the config being uploaded is trusted
+   * @throws IOException if an I/O error occurs or the path does not exist
+   */
+  public void uploadConfig(String configName, Path dir, boolean isTrusted) throws IOException {
+    setConfigSetTrust(configName, isTrusted);
+    uploadConfig(configName, dir);
+  }
+
+  /**
+   * Upload a file to config If file does not exist, it will be uploaded If overwriteOnExists is set
+   * to true then file will be overwritten
    *
    * @param configName the name to give the config
-   * @param fileName the name of the file
+   * @param fileName the name of the file with '/' used as the file path separator
    * @param data the content of the file
    * @param overwriteOnExists if true then file will be overwritten
    * @throws SolrException if file exists and overwriteOnExists == false
@@ -420,7 +459,7 @@ public abstract class ConfigSetService {
    * Download a file from config If the file does not exist, it returns null
    *
    * @param configName the name of the config
-   * @param filePath the file to download
+   * @param filePath the file to download with '/' as the separator
    * @return the content of the file
    */
   public abstract byte[] downloadFileFromConfig(String configName, String filePath)
@@ -453,7 +492,7 @@ public abstract class ConfigSetService {
    * Delete files in config
    *
    * @param configName the name of the config
-   * @param filesToDelete a list of file paths to delete
+   * @param filesToDelete a list of file paths to delete using '/' as file path separator
    */
   public abstract void deleteFilesFromConfig(String configName, List<String> filesToDelete)
       throws IOException;
@@ -465,8 +504,24 @@ public abstract class ConfigSetService {
    * @param configName the config name
    * @param data the metadata to be set on config
    */
-  public abstract void setConfigMetadata(String configName, Map<String, Object> data)
+  protected abstract void setConfigMetadata(String configName, Map<String, Object> data)
       throws IOException;
+
+  /**
+   * Set the config metadata If config does not exist, it will be created and set metadata on it
+   * Else metadata will be replaced with the provided metadata. This will preserve the trust that
+   * the configSet already has if trust is not included in the metadata.
+   *
+   * @param configName the config name
+   * @param data the metadata to be set on config
+   */
+  public void setConfigMetadataWithTrust(String configName, Map<String, Object> data)
+      throws IOException {
+    if (!data.containsKey("trusted")) {
+      data.put("trusted", isConfigSetTrusted(configName));
+    }
+    setConfigMetadata(configName, data);
+  }
 
   /**
    * Get the config metadata (mutable, non-null)
@@ -488,7 +543,7 @@ public abstract class ConfigSetService {
    * lexicographically e.g. solrconfig.xml, lang/, lang/stopwords_en.txt
    *
    * @param configName the config name
-   * @return list of file name paths in the config
+   * @return list of file name paths in the config with '/' uses as file path separators
    */
   public abstract List<String> getAllConfigFiles(String configName) throws IOException;
 

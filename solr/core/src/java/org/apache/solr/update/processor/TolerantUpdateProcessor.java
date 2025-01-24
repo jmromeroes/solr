@@ -38,7 +38,7 @@ import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.DeleteUpdateCommand;
 import org.apache.solr.update.MergeIndexesCommand;
 import org.apache.solr.update.RollbackUpdateCommand;
-import org.apache.solr.update.SolrCmdDistributor.Error;
+import org.apache.solr.update.SolrCmdDistributor.SolrError;
 import org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -232,17 +232,16 @@ public class TolerantUpdateProcessor extends UpdateRequestProcessor {
       firstErrTracker.caught(duae);
 
       // adjust our stats based on each of the distributed errors
-      for (Error error : duae.errors) {
+      for (SolrError error : duae.errors) {
         // we can't trust the req info from the Error, because multiple original requests might have
         // been lumped together
         //
         // instead we trust the metadata that the TolerantUpdateProcessor running on the remote node
         // added to the exception when it failed.
-        if (!(error.e instanceof SolrException)) {
+        if (!(error.e instanceof SolrException remoteErr)) {
           log.error("async update exception is not SolrException, no metadata to process", error.e);
           continue;
         }
-        SolrException remoteErr = (SolrException) error.e;
         NamedList<String> remoteErrMetadata = remoteErr.getMetadata();
 
         if (null == remoteErrMetadata) {

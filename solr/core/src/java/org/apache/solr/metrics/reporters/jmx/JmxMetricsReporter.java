@@ -166,6 +166,7 @@ public class JmxMetricsReporter implements Reporter, Closeable {
   // MBean interfaces and base classes
   public interface MetricMBean {
     ObjectName objectName();
+
     // this strange-looking method name is used for producing "_instanceTag" attribute name
     String get_instanceTag();
   }
@@ -322,6 +323,7 @@ public class JmxMetricsReporter implements Reporter, Closeable {
       return metric.getSnapshot().getValues();
     }
 
+    @Override
     public long getSnapshotSize() {
       return metric.getSnapshot().size();
     }
@@ -578,8 +580,7 @@ public class JmxMetricsReporter implements Reporter, Closeable {
         if (filter.matches(name, gauge)) {
           final ObjectName objectName = createName("gauges", name);
           if (gauge instanceof SolrMetricManager.GaugeWrapper
-              && ((SolrMetricManager.GaugeWrapper<?>) gauge).getGauge() instanceof MetricsMap) {
-            MetricsMap mm = (MetricsMap) ((SolrMetricManager.GaugeWrapper<?>) gauge).getGauge();
+              && ((SolrMetricManager.GaugeWrapper<?>) gauge).getGauge() instanceof MetricsMap mm) {
             mm.setAttribute(new Attribute(INSTANCE_TAG, tag));
             // don't wrap it in a JmxGauge, it already supports all necessary JMX attributes
             registerMBean(mm, objectName);

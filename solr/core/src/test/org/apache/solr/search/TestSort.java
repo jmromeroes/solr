@@ -19,7 +19,6 @@ package org.apache.solr.search;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -312,12 +311,14 @@ public class TestSort extends SolrTestCaseJ4 {
         }
         if (r.nextBoolean()) sfields.add(new SortField(null, SortField.Type.SCORE));
 
-        Sort sort = new Sort(sfields.toArray(new SortField[sfields.size()]));
+        Sort sort = new Sort(sfields.toArray(new SortField[0]));
 
         final String nullRep =
-            luceneSort || sortMissingFirst && !reverse || sortMissingLast && reverse ? "" : "zzz";
+            luceneSort || (sortMissingFirst && !reverse) || (sortMissingLast && reverse)
+                ? ""
+                : "zzz";
         final String nullRep2 =
-            luceneSort2 || sortMissingFirst2 && !reverse2 || sortMissingLast2 && reverse2
+            luceneSort2 || (sortMissingFirst2 && !reverse2) || (sortMissingLast2 && reverse2)
                 ? ""
                 : "zzz";
 
@@ -344,8 +345,7 @@ public class TestSort extends SolrTestCaseJ4 {
 
         searcher.search(query, myCollector);
 
-        Collections.sort(
-            collectedDocs,
+        collectedDocs.sort(
             (o1, o2) -> {
               String v1 = o1.val == null ? nullRep : o1.val;
               String v2 = o2.val == null ? nullRep : o2.val;

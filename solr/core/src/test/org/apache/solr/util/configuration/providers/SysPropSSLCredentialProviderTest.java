@@ -19,10 +19,10 @@ package org.apache.solr.util.configuration.providers;
 
 import static org.apache.solr.util.configuration.providers.AbstractSSLCredentialProvider.DEFAULT_CREDENTIAL_KEY_MAP;
 import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.assertThat;
 
 import java.util.Map;
 import org.apache.lucene.tests.util.TestRuleRestoreSystemProperties;
+import org.apache.solr.SolrTestCase;
 import org.apache.solr.util.configuration.SSLConfigurations;
 import org.apache.solr.util.configuration.SSLCredentialProvider;
 import org.junit.Rule;
@@ -30,7 +30,7 @@ import org.junit.Test;
 import org.junit.rules.TestRule;
 
 /** */
-public class SysPropSSLCredentialProviderTest {
+public class SysPropSSLCredentialProviderTest extends SolrTestCase {
 
   @Rule
   public TestRule syspropRestore =

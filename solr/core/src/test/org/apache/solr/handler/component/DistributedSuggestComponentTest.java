@@ -19,7 +19,6 @@ package org.apache.solr.handler.component;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import junit.framework.Assert;
 import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.util.NamedList;
@@ -57,7 +56,7 @@ public class DistributedSuggestComponentTest extends BaseDistributedSearchTestCa
         (NamedList<SimpleOrderedMap<NamedList<Object>>>) nl.get("suggest");
     String command = (String) nl.get("command");
     if (sc.size() == 0 && command == null) {
-      Assert.fail("Control data did not return any suggestions or execute any command");
+      fail("Control data did not return any suggestions or execute any command");
     }
   }
 
@@ -147,6 +146,6 @@ public class DistributedSuggestComponentTest extends BaseDistributedSearchTestCa
     if (addlParams != null) {
       params.addAll(Arrays.asList(addlParams));
     }
-    return params.toArray(new Object[params.size()]);
+    return params.toArray(new Object[0]);
   }
 }

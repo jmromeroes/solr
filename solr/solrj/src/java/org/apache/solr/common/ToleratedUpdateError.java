@@ -49,7 +49,7 @@ public final class ToleratedUpdateError {
   /**
    * Given a 'maxErrors' value such that<code>-1 &lt;= maxErrors &lt;= {@link Integer#MAX_VALUE}
    * </code> this method returns the original input unless it is {@link Integer#MAX_VALUE} in which
-   * case <code>-1</code> is returned for user convinience. Input of <code>maxErrors &lt; -1</code>
+   * case <code>-1</code> is returned for user convenience. Input of <code>maxErrors &lt; -1</code>
    * will trip an assertion and otherwise have undefined behavior.
    *
    * @see #getEffectiveMaxErrors
@@ -177,10 +177,12 @@ public final class ToleratedUpdateError {
     return entry;
   }
 
+  @Override
   public String toString() {
     return getMetadataKey() + "=>" + getMetadataValue();
   }
 
+  @Override
   public int hashCode() {
     int h = this.getClass().hashCode();
     h = h * 31 + type.hashCode();
@@ -189,9 +191,9 @@ public final class ToleratedUpdateError {
     return h;
   }
 
+  @Override
   public boolean equals(Object o) {
-    if (o instanceof ToleratedUpdateError) {
-      ToleratedUpdateError that = (ToleratedUpdateError) o;
+    if (o instanceof ToleratedUpdateError that) {
       return that.type.equals(this.type)
           && that.id.equals(this.id)
           && that.message.equals(this.message);

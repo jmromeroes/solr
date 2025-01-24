@@ -140,13 +140,15 @@ public class PurgeGraphTest extends SolrTestCaseJ4 {
     //        createUniquelyNamedIndexFile("uniqName5", "uniqName6");
     //
     //        assertEquals(1, purgeGraph.backupIdDeletes.size());
-    //        assertThat(purgeGraph.backupIdDeletes, containsInAnyOrder("backup_0.properties"));
+    //        assertThat(purgeGraph.backupIdDeletes,
+    // containsInAnyOrder("backup_0.properties"));
     //        assertEquals(2, purgeGraph.shardBackupMetadataDeletes.size());
     //        assertThat(purgeGraph.shardBackupMetadataDeletes,
     // containsInAnyOrder("md_shard1_0.json", "md_shard2_0.json"));
     //        // NOTE that 'uniqName4' is NOT marked for deletion
     //        assertEquals(2, purgeGraph.indexFileDeletes.size());
-    //        assertThat(purgeGraph.indexFileDeletes, containsInAnyOrder("uniqName1", "uniqName2"));
+    //        assertThat(purgeGraph.indexFileDeletes, containsInAnyOrder("uniqName1",
+    // "uniqName2"));
   }
 
   @Test
@@ -187,13 +189,18 @@ public class PurgeGraphTest extends SolrTestCaseJ4 {
     //        assertThat(purgeGraph.shardBackupMetadataDeletes,
     // containsInAnyOrder("md_shard3_0.json"));
     //        assertEquals(1, purgeGraph.indexFileDeletes.size());
-    //        assertThat(purgeGraph.indexFileDeletes, containsInAnyOrder("uniqName6"));
+    //        assertThat(purgeGraph.indexFileDeletes,
+    // containsInAnyOrder("uniqName6"));
   }
 
   private void createBackupIdFile(int backupId, String... shardNames) throws Exception {
     final BackupProperties createdProps =
         BackupProperties.create(
-            "someBackupName", "someCollectionName", "someExtCollectionName", "someConfigName");
+            "someBackupName",
+            "someCollectionName",
+            "someExtCollectionName",
+            "someConfigName",
+            null);
     for (String shardName : shardNames) {
       createdProps.putAndGetShardBackupIdFor(shardName, backupId);
     }

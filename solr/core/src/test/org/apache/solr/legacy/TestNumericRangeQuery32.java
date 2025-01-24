@@ -396,7 +396,7 @@ public class TestNumericRangeQuery32 extends SolrTestCase {
     q = LegacyNumericRangeQuery.newFloatRange("float", Float.NaN, Float.NaN, true, true);
     topDocs = s.search(q, 10);
     assertEquals(
-        "Score doc count", TestLegacyNumericUtils.FLOAT_NANs.length, topDocs.scoreDocs.length);
+        "Score doc count", TestLegacyNumericUtils.FLOAT_NANs.size(), topDocs.scoreDocs.length);
 
     r.close();
     dir.close();
@@ -543,7 +543,7 @@ public class TestNumericRangeQuery32 extends SolrTestCase {
     // only test equality:
     Query q1 = LegacyNumericRangeQuery.newIntRange("test14", 4, 10, 20, true, true);
     Query q2 = LegacyNumericRangeQuery.newLongRange("test14", 4, 10L, 20L, true, true);
-    assertFalse(q1.equals(q2));
-    assertFalse(q2.equals(q1));
+    assertNotEquals(q1, q2);
+    assertNotEquals(q2, q1);
   }
 }

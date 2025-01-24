@@ -115,8 +115,7 @@ public class SortSpecParsing {
           QParser parser = QParser.getParser(funcStr, FunctionQParserPlugin.NAME, optionalReq);
           Query q = null;
           try {
-            if (parser instanceof FunctionQParser) {
-              FunctionQParser fparser = (FunctionQParser) parser;
+            if (parser instanceof FunctionQParser fparser) {
               fparser.setParseMultipleSources(false);
               fparser.setParseToEnd(false);
 
@@ -213,11 +212,11 @@ public class SortSpecParsing {
     }
 
     // normalize a sort on score desc to null
-    if (sorts.size() == 1 && sorts.get(0) == SortField.FIELD_SCORE) {
+    if (sorts.size() == 1 && SortField.FIELD_SCORE.equals(sorts.get(0))) {
       return newEmptySortSpec();
     }
 
-    Sort s = new Sort(sorts.toArray(new SortField[sorts.size()]));
+    Sort s = new Sort(sorts.toArray(new SortField[0]));
     return new SortSpec(s, fields);
   }
 

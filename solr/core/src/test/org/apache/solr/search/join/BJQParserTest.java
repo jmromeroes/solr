@@ -37,15 +37,21 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.SyntaxError;
 import org.apache.solr.util.BaseTestHarness;
+import org.apache.solr.util.RandomNoReverseMergePolicyFactory;
 import org.junit.After;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 
 public class BJQParserTest extends SolrTestCaseJ4 {
 
   private static final String[] klm = new String[] {"k", "l", "m"};
   private static final List<String> xyz = Arrays.asList("x", "y", "z");
   private static final String[] abcdef = new String[] {"a", "b", "c", "d", "e", "f"};
+
+  @ClassRule
+  public static final TestRule noReverseMerge = RandomNoReverseMergePolicyFactory.createRule();
 
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -117,8 +123,9 @@ public class BJQParserTest extends SolrTestCaseJ4 {
     // add grandchildren after children
     for (ListIterator<String[]> iter = block.listIterator(); iter.hasNext(); ) {
       String[] child = iter.next();
-      assert Objects.equals(child[0], "child_s") && Objects.equals(child[2], "parentchild_s")
-          : Arrays.toString(child);
+      assertTrue(
+          Arrays.toString(child),
+          Objects.equals(child[0], "child_s") && Objects.equals(child[2], "parentchild_s"));
       String child_s = child[1];
       String parentchild_s = child[3];
       int grandChildPos = 0;
@@ -178,7 +185,6 @@ public class BJQParserTest extends SolrTestCaseJ4 {
         "//doc/arr[@name='child_s']/str='" + klm[0] + "'",
         "//doc/arr[@name='child_s']/str='" + klm[1] + "'",
         "//doc/arr[@name='child_s']/str='" + klm[2] + "'");
-    assert klm.length == 3 : "change asserts pls " + Arrays.toString(klm);
   }
 
   private static final String beParents[] =

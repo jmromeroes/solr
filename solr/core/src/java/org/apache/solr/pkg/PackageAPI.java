@@ -35,16 +35,21 @@ import org.apache.solr.api.Command;
 import org.apache.solr.api.EndPoint;
 import org.apache.solr.api.PayloadObj;
 import org.apache.solr.client.solrj.SolrRequest;
-import org.apache.solr.client.solrj.request.beans.Package;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.BinaryResponseParser;
+import org.apache.solr.client.solrj.request.GenericSolrRequest;
+import org.apache.solr.client.solrj.request.beans.PackagePayload;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.annotation.JsonProperty;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZooKeeperException;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.CommandOperation;
+import org.apache.solr.common.util.EnvUtils;
 import org.apache.solr.common.util.ReflectMapWriter;
 import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.CoreContainer;
-import org.apache.solr.filestore.PackageStoreAPI;
+import org.apache.solr.filestore.FileStoreUtils;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.util.SolrJacksonAnnotationInspector;
@@ -57,8 +62,7 @@ import org.slf4j.LoggerFactory;
 
 /** This implements the public end points (/api/cluster/package) of package API. */
 public class PackageAPI {
-  public final boolean enablePackages =
-      Boolean.parseBoolean(System.getProperty("enable.packages", "false"));
+  public final boolean enablePackages = EnvUtils.getPropertyAsBool("enable.packages", false);
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String ERR_MSG =
@@ -66,17 +70,13 @@ public class PackageAPI {
 
   final CoreContainer coreContainer;
   private final ObjectMapper mapper = SolrJacksonAnnotationInspector.createObjectMapper();
-  private final PackageLoader packageLoader;
+  private final SolrPackageLoader packageLoader;
   Packages pkgs;
 
   public final Edit editAPI = new Edit();
   public final Read readAPI = new Read();
 
-  public PackageAPI(CoreContainer coreContainer, PackageLoader loader) {
-    if (coreContainer.getPackageStoreAPI() == null) {
-      throw new IllegalStateException("Must successfully load PackageStoreAPI first");
-    }
-
+  public PackageAPI(CoreContainer coreContainer, SolrPackageLoader loader) {
     this.coreContainer = coreContainer;
     this.packageLoader = loader;
     pkgs = new Packages();
@@ -192,7 +192,7 @@ public class PackageAPI {
 
     public PkgVersion() {}
 
-    public PkgVersion(Package.AddVersion addVersion) {
+    public PkgVersion(PackagePayload.AddVersion addVersion) {
       this.pkg = addVersion.pkg;
       this.version = addVersion.version;
       this.files = addVersion.files == null ? null : Collections.unmodifiableList(addVersion.files);
@@ -202,8 +202,7 @@ public class PackageAPI {
 
     @Override
     public boolean equals(Object obj) {
-      if (obj instanceof PkgVersion) {
-        PkgVersion that = (PkgVersion) obj;
+      if (obj instanceof PkgVersion that) {
         return Objects.equals(this.version, that.version) && Objects.equals(this.files, that.files);
       }
       return false;
@@ -247,37 +246,47 @@ public class PackageAPI {
         payload.addError("Package null");
         return;
       }
-      PackageLoader.Package pkg = coreContainer.getPackageLoader().getPackage(p);
+      SolrPackageLoader.SolrPackage pkg = coreContainer.getPackageLoader().getPackage(p);
       if (pkg == null) {
         payload.addError("No such package: " + p);
         return;
       }
       // first refresh my own
       packageLoader.notifyListeners(p);
-      for (String s : coreContainer.getPackageStoreAPI().shuffledNodes()) {
-        Utils.executeGET(
-            coreContainer.getUpdateShardHandler().getDefaultHttpClient(),
-            coreContainer
-                    .getZkController()
-                    .zkStateReader
-                    .getBaseUrlForNodeName(s)
-                    .replace("/solr", "/api")
-                + "/cluster/package?wt=javabin&omitHeader=true&refreshPackage="
-                + p,
-            Utils.JAVABINCONSUMER);
+
+      final var solrParams = new ModifiableSolrParams();
+      solrParams.add("omitHeader", "true");
+      solrParams.add("refreshPackage", p);
+
+      final var request =
+          new GenericSolrRequest(SolrRequest.METHOD.GET, "/cluster/package", solrParams);
+      request.setResponseParser(new BinaryResponseParser());
+
+      for (String liveNode : FileStoreUtils.fetchAndShuffleRemoteLiveNodes(coreContainer)) {
+        final var baseUrl =
+            coreContainer.getZkController().zkStateReader.getBaseUrlV2ForNodeName(liveNode);
+        try {
+          var solrClient = coreContainer.getDefaultHttpSolrClient();
+          solrClient.requestWithBaseUrl(baseUrl, request::process);
+        } catch (SolrServerException | IOException e) {
+          throw new SolrException(
+              SolrException.ErrorCode.SERVER_ERROR,
+              "Failed to refresh package on node: " + liveNode,
+              e);
+        }
       }
     }
 
     @Command(name = "add")
-    public void add(PayloadObj<Package.AddVersion> payload) {
+    public void add(PayloadObj<PackagePayload.AddVersion> payload) {
       if (!checkEnabled(payload)) return;
-      Package.AddVersion add = payload.get();
+      PackagePayload.AddVersion add = payload.get();
       if (add.files.isEmpty()) {
         payload.addError("No files specified");
         return;
       }
-      PackageStoreAPI packageStoreAPI = coreContainer.getPackageStoreAPI();
-      packageStoreAPI.validateFiles(add.files, true, s -> payload.addError(s));
+      FileStoreUtils.validateFiles(
+          coreContainer.getFileStore(), add.files, true, s -> payload.addError(s));
       if (payload.hasError()) return;
       Packages[] finalState = new Packages[1];
       try {
@@ -322,9 +331,9 @@ public class PackageAPI {
     }
 
     @Command(name = "delete")
-    public void del(PayloadObj<Package.DelVersion> payload) {
+    public void del(PayloadObj<PackagePayload.DelVersion> payload) {
       if (!checkEnabled(payload)) return;
-      Package.DelVersion delVersion = payload.get();
+      PackagePayload.DelVersion delVersion = payload.get();
       try {
         coreContainer
             .getZkController()
@@ -426,17 +435,26 @@ public class PackageAPI {
   }
 
   void notifyAllNodesToSync(int expected) {
-    for (String s : coreContainer.getPackageStoreAPI().shuffledNodes()) {
-      Utils.executeGET(
-          coreContainer.getUpdateShardHandler().getDefaultHttpClient(),
-          coreContainer
-                  .getZkController()
-                  .zkStateReader
-                  .getBaseUrlForNodeName(s)
-                  .replace("/solr", "/api")
-              + "/cluster/package?wt=javabin&omitHeader=true&expectedVersion"
-              + expected,
-          Utils.JAVABINCONSUMER);
+
+    final var solrParams = new ModifiableSolrParams();
+    solrParams.add("omitHeader", "true");
+    solrParams.add("expectedVersion", String.valueOf(expected));
+
+    final var request =
+        new GenericSolrRequest(SolrRequest.METHOD.GET, "/cluster/package", solrParams);
+    request.setResponseParser(new BinaryResponseParser());
+
+    for (String liveNode : FileStoreUtils.fetchAndShuffleRemoteLiveNodes(coreContainer)) {
+      var baseUrl = coreContainer.getZkController().zkStateReader.getBaseUrlV2ForNodeName(liveNode);
+      try {
+        var solrClient = coreContainer.getDefaultHttpSolrClient();
+        solrClient.requestWithBaseUrl(baseUrl, request::process);
+      } catch (SolrServerException | IOException e) {
+        throw new SolrException(
+            SolrException.ErrorCode.SERVER_ERROR,
+            "Failed to notify node: " + liveNode + " to sync expected package version: " + expected,
+            e);
+      }
     }
   }
 

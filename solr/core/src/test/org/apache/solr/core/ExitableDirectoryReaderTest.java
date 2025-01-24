@@ -32,7 +32,7 @@ import org.junit.Test;
  */
 public class ExitableDirectoryReaderTest extends SolrTestCaseJ4 {
 
-  static int NUM_DOCS = 100;
+  static final int NUM_DOCS = 100;
   static final String assertionString = "/response/numFound==" + NUM_DOCS;
   static final String failureAssertionString = "/responseHeader/partialResults==true]";
   static final String longTimeout = "10000";
@@ -70,9 +70,26 @@ public class ExitableDirectoryReaderTest extends SolrTestCaseJ4 {
 
     // this time we should get a query cache hit and hopefully no exception?  this may change in the
     // future if time checks are put into other places.
-    assertJQ(req("q", q, "timeAllowed", "1", "sleep", sleep), assertionString);
+
+    // 2024-4-15: it did change..., and now this fails with 1 or 2 ms and passes with 3ms... I see
+    // no way this won't be terribly brittle. Maybe TestInjection of some sort to bring this back?
+
+    // assertJQ(req("q", q, "timeAllowed", "2", "sleep", sleep), assertionString);
+
+    // The idea that the request won't time out due to caching is a flawed test methodology,
+    // It relies on the test running quickly and not stalling. The above test should possibly
+    // be doing something along the lines of this (but we lack api for it)
+    //
+    //    SolrCores solrCores = ExitableDirectoryReaderTest.h.getCoreContainer().solrCores;
+    //    List<SolrCore> cores = solrCores.getCores();
+    //    for (SolrCore core : cores) {
+    //      if (<<< find the right core >>> ) {
+    //        ((SolrCache)core.getSearcher().get().<<<check cache for a key like name:a* >>>
+    //      }
+    //    }
 
     // now do the same for the filter cache
+    // 2024-4-15: this still passes probably because *:* is so fast, but it still worries me
     assertJQ(req("q", "*:*", "fq", q, "timeAllowed", "1", "sleep", sleep), failureAssertionString);
 
     // make sure that the result succeeds this time, and that a bad filter wasn't cached
@@ -151,9 +168,9 @@ public class ExitableDirectoryReaderTest extends SolrTestCaseJ4 {
 
     assertEquals("Should have exactly " + NUM_DOCS, (long) (body.get("numFound")), NUM_DOCS);
     header = (Map<?, ?>) (res.get("responseHeader"));
-    assertTrue(
+    assertNull(
         "Should NOT have partial results",
-        header.get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY) == null);
+        header.get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY));
   }
 
   // When looking at a problem raised on the user's list I ran across this anomaly with timeAllowed

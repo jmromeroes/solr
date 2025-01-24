@@ -27,14 +27,20 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.BasicResultContext;
+import org.apache.solr.util.RandomNoReverseMergePolicyFactory;
 import org.junit.After;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 
 public class TestChildDocTransformer extends SolrTestCaseJ4 {
 
   private static String ID_FIELD = "id";
   private String[] titleVals = new String[2];
+
+  @ClassRule
+  public static final TestRule noReverseMerge = RandomNoReverseMergePolicyFactory.createRule();
 
   @BeforeClass
   public static void beforeClass() throws Exception {

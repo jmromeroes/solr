@@ -119,9 +119,11 @@ public class ComplexPhraseQParserPlugin extends QParserPlugin {
       String defaultField = getParam(CommonParams.DF);
 
       SolrQueryParserDelegate reverseAwareParser = new SolrQueryParserDelegate(this, defaultField);
+      final var qParserReference = this;
 
       lparser =
           new ComplexPhraseQueryParser(defaultField, getReq().getSchema().getQueryAnalyzer()) {
+            @Override
             protected Query newWildcardQuery(org.apache.lucene.index.Term t) {
               try {
                 org.apache.lucene.search.Query wildcardQuery =
@@ -133,6 +135,14 @@ public class ComplexPhraseQParserPlugin extends QParserPlugin {
               }
             }
 
+            @Override
+            protected Query getPrefixQuery(String field, String termStr) throws ParseException {
+              final var query = super.getPrefixQuery(field, termStr);
+              QueryUtils.ensurePrefixQueryObeysMinimumPrefixLength(
+                  qParserReference, query, termStr);
+              return query;
+            }
+
             private Query setRewriteMethod(org.apache.lucene.search.Query query) {
               if (query instanceof MultiTermQuery) {
                 ((MultiTermQuery) query)
@@ -142,6 +152,7 @@ public class ComplexPhraseQParserPlugin extends QParserPlugin {
               return query;
             }
 
+            @Override
             protected Query newRangeQuery(
                 String field,
                 String part1,

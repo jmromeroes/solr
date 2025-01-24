@@ -65,6 +65,7 @@ public class SortableTextField extends TextField {
 
   private int maxCharsForDocValues = DEFAULT_MAX_CHARS_FOR_DOC_VALUES;
 
+  @Override
   protected void init(IndexSchema schema, Map<String, String> args) {
     {
       final String maxS = args.remove("maxCharsForDocValues");
@@ -100,8 +101,7 @@ public class SortableTextField extends TextField {
     if (!field.hasDocValues()) {
       return Collections.singletonList(f);
     }
-    if (value instanceof ByteArrayUtf8CharSequence) {
-      ByteArrayUtf8CharSequence utf8 = (ByteArrayUtf8CharSequence) value;
+    if (value instanceof ByteArrayUtf8CharSequence utf8) {
       if (utf8.size() < maxCharsForDocValues) {
         BytesRef bytes = new BytesRef(utf8.getBuf(), utf8.offset(), utf8.size());
         return getIndexableFields(field, f, bytes);
@@ -147,6 +147,11 @@ public class SortableTextField extends TextField {
   @Override
   protected void checkSupportsDocValues() {
     // No-Op
+  }
+
+  @Override
+  protected boolean enableDocValuesByDefault() {
+    return true;
   }
 
   @Override
@@ -221,7 +226,7 @@ public class SortableTextField extends TextField {
     return new SortedSetFieldSource(field.getName(), selectorType);
   }
 
-  /** {@inheritDoc} this field type is not uninvertable, this method always returns null */
+  /** {@inheritDoc} this field type is not uninvertible, this method always returns null */
   @Override
   public Type getUninversionType(SchemaField sf) {
     return null;

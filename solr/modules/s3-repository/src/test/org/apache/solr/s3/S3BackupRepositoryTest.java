@@ -33,7 +33,6 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.store.NIOFSDirectory;
 import org.apache.lucene.store.OutputStreamIndexOutput;
 import org.apache.solr.cloud.api.collections.AbstractBackupRepositoryTest;
 import org.apache.solr.common.util.NamedList;
@@ -54,7 +53,11 @@ public class S3BackupRepositoryTest extends AbstractBackupRepositoryTest {
 
   @ClassRule
   public static final S3MockRule S3_MOCK_RULE =
-      S3MockRule.builder().silent().withInitialBuckets(BUCKET_NAME).build();
+      S3MockRule.builder()
+          .silent()
+          .withInitialBuckets(BUCKET_NAME)
+          .withSecureConnection(false)
+          .build();
 
   /**
    * Sent by {@link org.apache.solr.handler.ReplicationHandler}, ensure we don't choke on the bare
@@ -100,13 +103,13 @@ public class S3BackupRepositoryTest extends AbstractBackupRepositoryTest {
   public void testLocalDirectoryFunctions() throws Exception {
     try (S3BackupRepository repo = getRepository()) {
 
-      URI path = new URI("/test");
+      URI path = new URI("/test/");
       repo.createDirectory(path);
       assertTrue(repo.exists(path));
       assertEquals(BackupRepository.PathType.DIRECTORY, repo.getPathType(path));
       assertEquals("No files should exist in dir yet", repo.listAll(path).length, 0);
 
-      URI subDir = new URI("/test/dir");
+      URI subDir = new URI("/test/dir/");
       repo.createDirectory(subDir);
       assertTrue(repo.exists(subDir));
       assertEquals(BackupRepository.PathType.DIRECTORY, repo.getPathType(subDir));
@@ -183,8 +186,9 @@ public class S3BackupRepositoryTest extends AbstractBackupRepositoryTest {
         CodecUtil.writeFooter(indexOutput);
       }
 
-      Directory sourceDir = new NIOFSDirectory(tmp.toPath());
-      repo.copyIndexFileFrom(sourceDir, "from-file", new URI("s3://to-folder"), "to-file");
+      try (Directory sourceDir = newFSDirectory(tmp.toPath())) {
+        repo.copyIndexFileFrom(sourceDir, "from-file", new URI("s3://to-folder"), "to-file");
+      }
 
       // Sanity check: we do have different files
       File actualSource = new File(tmp, "from-file");
@@ -204,12 +208,13 @@ public class S3BackupRepositoryTest extends AbstractBackupRepositoryTest {
 
       // Local folder for destination
       File tmp = temporaryFolder.newFolder();
-      Directory destDir = new NIOFSDirectory(tmp.toPath());
 
       // Directly create a file on S3
       pushObject("from-file", content);
 
-      repo.copyIndexFileTo(new URI("s3:///"), "from-file", destDir, "to-file");
+      try (Directory destDir = newFSDirectory(tmp.toPath())) {
+        repo.copyIndexFileTo(new URI("s3:///"), "from-file", destDir, "to-file");
+      }
 
       // Sanity check: we do have different files
       File actualSource = pullObject("from-file");
@@ -246,7 +251,7 @@ public class S3BackupRepositoryTest extends AbstractBackupRepositoryTest {
 
     try (S3BackupRepository repo = getRepository()) {
       // Open an index input on a file
-      pushObject("/my-repo/content", content);
+      pushObject("my-repo/content", content);
       IndexInput input = repo.openInput(new URI("s3://my-repo"), "content", IOContext.DEFAULT);
 
       byte[] buffer = new byte[100];
@@ -278,7 +283,7 @@ public class S3BackupRepositoryTest extends AbstractBackupRepositoryTest {
       String blank = " ".repeat(5 * BufferedIndexInput.BUFFER_SIZE);
       String content = "This is the file " + blank + "content";
 
-      pushObject("/content", content);
+      pushObject("content", content);
       IndexInput input = repo.openInput(new URI("s3:///"), "content", IOContext.DEFAULT);
 
       // Read twice the size of the internal buffer, so first bytes are not in the buffer anymore
@@ -290,6 +295,11 @@ public class S3BackupRepositoryTest extends AbstractBackupRepositoryTest {
       IOException exception = assertThrows(IOException.class, () -> input.seek(5));
       assertEquals("Cannot seek backward", exception.getMessage());
     }
+  }
+
+  @Override
+  protected Class<? extends BackupRepository> getRepositoryClass() {
+    return S3BackupRepository.class;
   }
 
   @Override

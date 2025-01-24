@@ -46,6 +46,7 @@ public class ReplicaListTransformerTest extends SolrTestCase {
       this.regex = regex;
     }
 
+    @Override
     public <T> void transform(List<T> choices) {
       log.info("regex transform input: {}", choices);
       Iterator<?> it = choices.iterator();
@@ -75,11 +76,11 @@ public class ReplicaListTransformerTest extends SolrTestCase {
 
     final ReplicaListTransformer transformer;
     if (random().nextBoolean()) {
-      log.info("Using ToyMatching Transfomer");
+      log.info("Using ToyMatching Transformer");
       transformer = new ToyMatchingReplicaListTransformer(regex);
 
     } else {
-      log.info("Using conditional Transfomer");
+      log.info("Using conditional Transformer");
       transformer =
           new HttpShardHandlerFactory() {
 

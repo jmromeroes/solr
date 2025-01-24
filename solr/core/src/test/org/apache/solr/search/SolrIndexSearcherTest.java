@@ -69,6 +69,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
     return numbers.toString();
   }
 
+  @Override
   @Before
   public void setUp() throws Exception {
     assertU(
@@ -119,16 +120,14 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
 
   private void assertMatchesEqual(int expectedCount, SolrIndexSearcher searcher, QueryCommand cmd)
       throws IOException {
-    QueryResult qr = new QueryResult();
-    searcher.search(qr, cmd);
+    QueryResult qr = searcher.search(cmd);
     assertEquals(expectedCount, qr.getDocList().matches());
     assertEquals(TotalHits.Relation.EQUAL_TO, qr.getDocList().hitCountRelation());
   }
 
   private QueryResult assertMatchesGreaterThan(
       int expectedCount, SolrIndexSearcher searcher, QueryCommand cmd) throws IOException {
-    QueryResult qr = new QueryResult();
-    searcher.search(qr, cmd);
+    QueryResult qr = searcher.search(cmd);
     assertTrue(
         "Expecting returned matches to be greater than "
             + expectedCount
@@ -181,7 +180,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
             searcher -> {
               QueryCommand cmd = createBasicQueryCommand(NUM_DOCS / 2, 10, "field1_s", "foo");
               cmd.clearFlags(SolrIndexSearcher.NO_CHECK_QCACHE | SolrIndexSearcher.NO_SET_QCACHE);
-              searcher.search(new QueryResult(), cmd);
+              searcher.search(cmd);
               assertMatchesGreaterThan(NUM_DOCS, searcher, cmd);
               return null;
             });
@@ -193,7 +192,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
             searcher -> {
               QueryCommand cmd = createBasicQueryCommand(NUM_DOCS, 2, "field1_s", "foo");
               cmd.clearFlags(SolrIndexSearcher.NO_CHECK_QCACHE | SolrIndexSearcher.NO_SET_QCACHE);
-              searcher.search(new QueryResult(), cmd);
+              searcher.search(cmd);
               assertMatchesEqual(NUM_DOCS, searcher, cmd);
               return null;
             });
@@ -277,8 +276,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
                 cmd.setQuery(new FixedScoreReRankQuery(cmd.getQuery(), expectedScore));
               }
 
-              final QueryResult qr = new QueryResult();
-              searcher.search(qr, cmd);
+              final QueryResult qr = searcher.search(cmd);
 
               // check score for the first document
               final DocIterator iter = qr.getDocList().iterator();
@@ -299,6 +297,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
       this.fixedScore = fixedScore;
     }
 
+    @Override
     public Weight createWeight(IndexSearcher indexSearcher, ScoreMode scoreMode, float boost)
         throws IOException {
       return q.createWeight(indexSearcher, scoreMode, boost);
@@ -325,7 +324,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
     }
 
     @Override
-    public TopDocsCollector<ScoreDoc> getTopDocsCollector(
+    public TopDocsCollector<? extends ScoreDoc> getTopDocsCollector(
         int len, QueryCommand cmd, IndexSearcher searcher) throws IOException {
       return new ReRankCollector(
           len,
@@ -355,6 +354,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
       return null;
     }
 
+    @Override
     public RankQuery wrap(Query q) {
       this.q = q;
       return this;
@@ -379,7 +379,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
               Query filterQuery =
                   new TermQuery(new Term("field4_t", Integer.toString(NUM_DOCS - 1)));
               cmd.setFilterList(filterQuery);
-              assertNull(searcher.getProcessedFilter(null, cmd.getFilterList()).postFilter);
+              assertNull(searcher.getProcessedFilter(cmd.getFilterList()).postFilter);
               assertMatchesEqual(1, searcher, cmd);
               return null;
             });
@@ -401,7 +401,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
               QueryCommand cmd = createBasicQueryCommand(1, 1, "field4_t", "0");
               MockPostFilter filterQuery = new MockPostFilter(1, 101);
               cmd.setFilterList(filterQuery);
-              assertNotNull(searcher.getProcessedFilter(null, cmd.getFilterList()).postFilter);
+              assertNotNull(searcher.getProcessedFilter(cmd.getFilterList()).postFilter);
               assertMatchesEqual(1, searcher, cmd);
               return null;
             });
@@ -412,7 +412,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
               QueryCommand cmd = createBasicQueryCommand(1, 1, "field4_t", "0");
               MockPostFilter filterQuery = new MockPostFilter(100, 101);
               cmd.setFilterList(filterQuery);
-              assertNotNull(searcher.getProcessedFilter(null, cmd.getFilterList()).postFilter);
+              assertNotNull(searcher.getProcessedFilter(cmd.getFilterList()).postFilter);
               assertMatchesGreaterThan(NUM_DOCS, searcher, cmd);
               return null;
             });
@@ -427,7 +427,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
               MockPostFilter filterQuery =
                   new MockPostFilter(NUM_DOCS * 10, 101, ScoreMode.COMPLETE);
               cmd.setFilterList(filterQuery);
-              assertNotNull(searcher.getProcessedFilter(null, cmd.getFilterList()).postFilter);
+              assertNotNull(searcher.getProcessedFilter(cmd.getFilterList()).postFilter);
               assertMatchesEqual(NUM_DOCS, searcher, cmd);
               return null;
             });
@@ -451,7 +451,7 @@ public class SolrIndexSearcherTest extends SolrTestCaseJ4 {
 
     public MockPostFilter(int maxDocsToCollect, int cost, ScoreMode scoreMode) {
       super(new Term("foo", "bar")); // The term won't really be used. just the collector
-      assert cost > 100;
+      assertTrue(cost > 100);
       this.cost = cost;
       this.maxDocsToCollect = maxDocsToCollect;
       this.scoreMode = scoreMode;

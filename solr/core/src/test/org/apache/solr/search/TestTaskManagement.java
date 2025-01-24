@@ -68,10 +68,8 @@ public class TestTaskManagement extends SolrCloudTestCase {
     super.setUp();
 
     CollectionAdminRequest.createCollection(COLLECTION_NAME, "conf", 2, 1)
-        .setPerReplicaState(SolrCloudTestCase.USE_PER_REPLICA_STATE)
         .process(cluster.getSolrClient());
     cluster.waitForActiveCollection(COLLECTION_NAME, 2, 2);
-    cluster.getSolrClient().setDefaultCollection(COLLECTION_NAME);
 
     queryExecutor = ExecutorUtil.newMDCAwareCachedThreadPool("TestTaskManagement-Query");
     cancelExecutor = ExecutorUtil.newMDCAwareCachedThreadPool("TestTaskManagement-Cancel");
@@ -87,8 +85,8 @@ public class TestTaskManagement extends SolrCloudTestCase {
       docs.add(doc);
     }
 
-    cluster.getSolrClient().add(docs);
-    cluster.getSolrClient().commit();
+    cluster.getSolrClient(COLLECTION_NAME).add(docs);
+    cluster.getSolrClient(COLLECTION_NAME).commit();
   }
 
   @After
@@ -109,8 +107,9 @@ public class TestTaskManagement extends SolrCloudTestCase {
     params.set("queryUUID", "foobar");
 
     GenericSolrRequest request =
-        new GenericSolrRequest(SolrRequest.METHOD.GET, "/tasks/cancel", params);
-    NamedList<Object> queryResponse = cluster.getSolrClient().request(request);
+        new GenericSolrRequest(SolrRequest.METHOD.GET, "/tasks/cancel", params)
+            .setRequiresCollection(true);
+    NamedList<Object> queryResponse = cluster.getSolrClient(COLLECTION_NAME).request(request);
 
     assertEquals("Query with queryID foobar not found", queryResponse.get("status"));
     assertEquals(404, queryResponse.get("responseCode"));
@@ -184,8 +183,10 @@ public class TestTaskManagement extends SolrCloudTestCase {
   private NamedList<String> listTasks() throws SolrServerException, IOException {
     NamedList<Object> response =
         cluster
-            .getSolrClient()
-            .request(new GenericSolrRequest(SolrRequest.METHOD.GET, "/tasks/list", null));
+            .getSolrClient(COLLECTION_NAME)
+            .request(
+                new GenericSolrRequest(SolrRequest.METHOD.GET, "/tasks/list")
+                    .setRequiresCollection(true));
     return (NamedList<String>) response.get("taskList");
   }
 
@@ -195,8 +196,9 @@ public class TestTaskManagement extends SolrCloudTestCase {
     params.set("taskUUID", "25");
 
     GenericSolrRequest request =
-        new GenericSolrRequest(SolrRequest.METHOD.GET, "/tasks/list", params);
-    NamedList<Object> queryResponse = cluster.getSolrClient().request(request);
+        new GenericSolrRequest(SolrRequest.METHOD.GET, "/tasks/list", params)
+            .setRequiresCollection(true);
+    NamedList<Object> queryResponse = cluster.getSolrClient(COLLECTION_NAME).request(request);
 
     String result = (String) queryResponse.get("taskStatus");
 
@@ -216,7 +218,7 @@ public class TestTaskManagement extends SolrCloudTestCase {
           try {
             NamedList<Object> queryResponse;
 
-            queryResponse = cluster.getSolrClient().request(request);
+            queryResponse = cluster.getSolrClient(COLLECTION_NAME).request(request);
 
             int responseCode = (int) queryResponse.get("responseCode");
 
@@ -244,7 +246,7 @@ public class TestTaskManagement extends SolrCloudTestCase {
 
     SolrRequest<?> request = new QueryRequest(params);
 
-    cluster.getSolrClient().request(request);
+    cluster.getSolrClient(COLLECTION_NAME).request(request);
   }
 
   public CompletableFuture<Void> executeQueryAsync(String queryId) {

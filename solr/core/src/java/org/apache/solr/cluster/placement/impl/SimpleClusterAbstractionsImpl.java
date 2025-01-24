@@ -17,9 +17,9 @@
 
 package org.apache.solr.cluster.placement.impl;
 
-import com.google.common.collect.Maps;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
@@ -81,6 +81,7 @@ class SimpleClusterAbstractionsImpl {
       return liveNodes;
     }
 
+    @Override
     public Set<Node> getLiveDataNodes() {
       return liveNodesWithData;
     }
@@ -92,7 +93,8 @@ class SimpleClusterAbstractionsImpl {
 
     @Override
     public Iterator<SolrCollection> iterator() {
-      return clusterState.getCollectionsMap().values().stream()
+      return clusterState
+          .collectionStream()
           .map(SolrCollectionImpl::fromDocCollection)
           .collect(Collectors.toSet())
           .iterator();
@@ -132,20 +134,18 @@ class SimpleClusterAbstractionsImpl {
      * comparing node names given that new instances of {@link Node} are created with names equal to
      * existing instances (See {@link ReplicaImpl} constructor).
      */
+    @Override
     public boolean equals(Object obj) {
-      if (obj == null) {
-        return false;
-      }
       if (obj == this) {
         return true;
       }
-      if (obj.getClass() != getClass()) {
+      if (!(obj instanceof NodeImpl other)) {
         return false;
       }
-      NodeImpl other = (NodeImpl) obj;
       return Objects.equals(this.nodeName, other.nodeName);
     }
 
+    @Override
     public int hashCode() {
       return Objects.hashCode(nodeName);
     }
@@ -153,6 +153,7 @@ class SimpleClusterAbstractionsImpl {
 
   static class SolrCollectionImpl implements SolrCollection {
     private final String collectionName;
+
     /** Map from {@link Shard#getShardName()} to {@link Shard} */
     private final Map<String, Shard> shards;
 
@@ -228,7 +229,7 @@ class SimpleClusterAbstractionsImpl {
      * of {@link Shard}'s, keyed by shard name ({@link Shard#getShardName()}).
      */
     static Map<String, Shard> getShards(SolrCollection solrCollection, Collection<Slice> slices) {
-      Map<String, Shard> shards = Maps.newHashMap();
+      Map<String, Shard> shards = new HashMap<>();
 
       for (Slice slice : slices) {
         String shardName = slice.getName();
@@ -300,17 +301,14 @@ class SimpleClusterAbstractionsImpl {
       return shardState;
     }
 
+    @Override
     public boolean equals(Object obj) {
-      if (obj == null) {
-        return false;
-      }
       if (obj == this) {
         return true;
       }
-      if (obj.getClass() != getClass()) {
+      if (!(obj instanceof ShardImpl other)) {
         return false;
       }
-      ShardImpl other = (ShardImpl) obj;
       return Objects.equals(this.shardName, other.shardName)
           && Objects.equals(this.collection, other.collection)
           && Objects.equals(this.shardState, other.shardState)
@@ -318,6 +316,7 @@ class SimpleClusterAbstractionsImpl {
           && Objects.equals(this.leader, other.leader);
     }
 
+    @Override
     public int hashCode() {
       return Objects.hash(shardName, collection, shardState);
     }
@@ -356,7 +355,7 @@ class SimpleClusterAbstractionsImpl {
      */
     static Pair<Map<String, Replica>, Replica> getReplicas(
         Collection<org.apache.solr.common.cloud.Replica> sliceReplicas, Shard shard) {
-      Map<String, Replica> replicas = Maps.newHashMap();
+      Map<String, Replica> replicas = new HashMap<>();
       Replica leader = null;
 
       for (org.apache.solr.common.cloud.Replica sliceReplica : sliceReplicas) {
@@ -461,17 +460,14 @@ class SimpleClusterAbstractionsImpl {
       }
     }
 
+    @Override
     public boolean equals(Object obj) {
-      if (obj == null) {
-        return false;
-      }
       if (obj == this) {
         return true;
       }
-      if (obj.getClass() != getClass()) {
+      if (!(obj instanceof ReplicaImpl other)) {
         return false;
       }
-      ReplicaImpl other = (ReplicaImpl) obj;
       return Objects.equals(this.replicaName, other.replicaName)
           && Objects.equals(this.coreName, other.coreName)
           && Objects.equals(this.shard, other.shard)
@@ -480,6 +476,7 @@ class SimpleClusterAbstractionsImpl {
           && Objects.equals(this.node, other.node);
     }
 
+    @Override
     public int hashCode() {
       return Objects.hash(replicaName, coreName, shard, replicaType, replicaState, node);
     }

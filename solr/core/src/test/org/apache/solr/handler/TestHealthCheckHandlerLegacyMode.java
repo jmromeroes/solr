@@ -27,12 +27,12 @@ import static org.apache.solr.handler.ReplicationTestHelper.rQuery;
 import java.io.IOException;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.request.HealthCheckRequest;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.embedded.JettySolrRunner;
 import org.apache.solr.util.TestInjection;
 import org.junit.After;
 import org.junit.Before;
@@ -41,13 +41,12 @@ import org.junit.Test;
 /** Test for HealthCheckHandler in legacy mode */
 @SuppressSSL // Currently, unknown why SSL does not work with this test
 public class TestHealthCheckHandlerLegacyMode extends SolrTestCaseJ4 {
-  HttpSolrClient leaderClientHealthCheck, followerClientHealthCheck;
+  SolrClient leaderClientHealthCheck, followerClientHealthCheck;
   JettySolrRunner leaderJetty, followerJetty;
-  HttpSolrClient leaderClient, followerClient;
+  SolrClient leaderClient, followerClient;
   ReplicationTestHelper.SolrInstance leader = null, follower = null;
 
-  private static final String context = "/solr";
-
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();
@@ -61,9 +60,9 @@ public class TestHealthCheckHandlerLegacyMode extends SolrTestCaseJ4 {
     leaderJetty = ReplicationTestHelper.createAndStartJetty(leader);
     leaderClient =
         ReplicationTestHelper.createNewSolrClient(
-            buildUrl(leaderJetty.getLocalPort(), context) + "/" + DEFAULT_TEST_CORENAME);
+            buildUrl(leaderJetty.getLocalPort()), DEFAULT_TEST_CORENAME);
     leaderClientHealthCheck =
-        ReplicationTestHelper.createNewSolrClient(buildUrl(leaderJetty.getLocalPort(), context));
+        ReplicationTestHelper.createNewSolrClient(buildUrl(leaderJetty.getLocalPort()));
 
     follower =
         new SolrInstance(
@@ -72,11 +71,9 @@ public class TestHealthCheckHandlerLegacyMode extends SolrTestCaseJ4 {
     followerJetty = createAndStartJetty(follower);
     followerClient =
         ReplicationTestHelper.createNewSolrClient(
-            buildUrl(followerJetty.getLocalPort(), context) + "/" + DEFAULT_TEST_CORENAME);
+            buildUrl(followerJetty.getLocalPort()), DEFAULT_TEST_CORENAME);
     followerClientHealthCheck =
-        ReplicationTestHelper.createNewSolrClient(buildUrl(followerJetty.getLocalPort(), context));
-
-    System.setProperty("solr.indexfetcher.sotimeout2", "45000");
+        ReplicationTestHelper.createNewSolrClient(buildUrl(followerJetty.getLocalPort()));
   }
 
   public void clearIndexWithReplication() throws Exception {
@@ -117,7 +114,6 @@ public class TestHealthCheckHandlerLegacyMode extends SolrTestCaseJ4 {
       followerClientHealthCheck.close();
       followerClientHealthCheck = null;
     }
-    System.clearProperty("solr.indexfetcher.sotimeout");
   }
 
   @Test
@@ -129,8 +125,7 @@ public class TestHealthCheckHandlerLegacyMode extends SolrTestCaseJ4 {
 
     // stop replication so that the follower doesn't pull the index
     invokeReplicationCommand(
-        buildUrl(followerJetty.getLocalPort(), context) + "/" + DEFAULT_TEST_CORENAME,
-        "disablepoll");
+        buildUrl(followerJetty.getLocalPort()) + "/" + DEFAULT_TEST_CORENAME, "disablepoll");
 
     // create multiple commits
     int docsAdded = 0;
@@ -235,12 +230,12 @@ public class TestHealthCheckHandlerLegacyMode extends SolrTestCaseJ4 {
 
   public static void pullFromTo(JettySolrRunner srcSolr, JettySolrRunner destSolr)
       throws IOException {
-    String srcUrl = buildUrl(srcSolr.getLocalPort(), context) + "/" + DEFAULT_TEST_CORENAME;
-    String destUrl = buildUrl(destSolr.getLocalPort(), context) + "/" + DEFAULT_TEST_CORENAME;
+    String srcUrl = buildUrl(srcSolr.getLocalPort()) + "/" + DEFAULT_TEST_CORENAME;
+    String destUrl = buildUrl(destSolr.getLocalPort()) + "/" + DEFAULT_TEST_CORENAME;
     ReplicationTestHelper.pullFromTo(srcUrl, destUrl);
   }
 
-  private void assertNumFoundWithQuery(HttpSolrClient client, int nDocs) throws Exception {
+  private void assertNumFoundWithQuery(SolrClient client, int nDocs) throws Exception {
     NamedList<Object> queryRsp = rQuery(nDocs, "*:*", client);
     assertEquals(nDocs, numFound(queryRsp));
   }

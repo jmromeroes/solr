@@ -16,6 +16,7 @@
  */
 package org.apache.solr.spelling;
 
+import java.util.List;
 import org.apache.lucene.search.spell.JaroWinklerDistance;
 import org.apache.lucene.search.spell.LevenshteinDistance;
 import org.apache.lucene.search.spell.LuceneLevenshteinDistance;
@@ -24,24 +25,22 @@ import org.apache.lucene.search.spell.StringDistance;
 import org.apache.solr.SolrTestCase;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.search.SolrIndexSearcher;
-import org.junit.Assert;
 import org.junit.Test;
 
 public class ConjunctionSolrSpellCheckerTest extends SolrTestCase {
 
-  public static final Class<?>[] AVAILABLE_DISTANCES = {
-    LevenshteinDistance.class,
-    LuceneLevenshteinDistance.class,
-    JaroWinklerDistance.class,
-    NGramDistance.class
-  };
+  public static final List<Class<? extends StringDistance>> AVAILABLE_DISTANCES =
+      List.of(
+          LevenshteinDistance.class,
+          LuceneLevenshteinDistance.class,
+          JaroWinklerDistance.class,
+          NGramDistance.class);
 
   @Test
   public void test() throws Exception {
     ConjunctionSolrSpellChecker cssc = new ConjunctionSolrSpellChecker();
-    @SuppressWarnings("unchecked")
-    Class<StringDistance> sameDistance =
-        (Class<StringDistance>) AVAILABLE_DISTANCES[random().nextInt(AVAILABLE_DISTANCES.length)];
+    Class<? extends StringDistance> sameDistance =
+        AVAILABLE_DISTANCES.get(random().nextInt(AVAILABLE_DISTANCES.size()));
 
     StringDistance sameDistance1 = sameDistance.getConstructor().newInstance();
     StringDistance sameDistance2 = sameDistance.getConstructor().newInstance();
@@ -55,7 +54,7 @@ public class ConjunctionSolrSpellCheckerTest extends SolrTestCase {
             "Cannot set up test.  2 NGramDistances with different gram sizes should not be equal.");
       }
     }
-    Assert.assertEquals(
+    assertEquals(
         "The distance " + sameDistance + " does not properly implement equals.",
         sameDistance1,
         sameDistance2);

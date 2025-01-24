@@ -53,6 +53,7 @@ import org.apache.zookeeper.KeeperException;
  * the value of anything can change any moment Creating an instance is a low cost operation. It does
  * not result in a network call or large object creation
  */
+@Deprecated
 public class LazySolrCluster implements SolrCluster {
   final ZkStateReader zkStateReader;
 
@@ -170,8 +171,8 @@ public class LazySolrCluster implements SolrCluster {
       public void forEachEntry(BiConsumer<String, ? super SolrCollection> fun) {
         zkStateReader
             .getClusterState()
-            .forEachCollection(
-                coll -> fun.accept(coll.getName(), _collection(coll.getName(), coll)));
+            .collectionStream()
+            .forEach(coll -> fun.accept(coll.getName(), _collection(coll.getName(), coll)));
       }
 
       @Override
@@ -188,7 +189,7 @@ public class LazySolrCluster implements SolrCluster {
       return null;
     }
     SolrCollectionImpl existing = cached.get(key);
-    if (existing == null || existing.coll != c) {
+    if (existing == null || !Objects.equals(existing.coll, c)) {
       cached.put(key, existing = new SolrCollectionImpl(c, zkStateReader));
     }
     return existing;

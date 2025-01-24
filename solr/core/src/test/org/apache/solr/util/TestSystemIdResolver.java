@@ -20,14 +20,15 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
-import org.apache.commons.io.IOUtils;
 import org.apache.lucene.util.ResourceLoader;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.util.IOUtils;
 import org.apache.solr.core.SolrResourceLoader;
 import org.xml.sax.InputSource;
 
 public class TestSystemIdResolver extends SolrTestCaseJ4 {
 
+  @Override
   public void tearDown() throws Exception {
     System.clearProperty(SolrResourceLoader.SOLR_ALLOW_UNSAFE_RESOURCELOADING_PARAM);
     super.tearDown();
@@ -45,7 +46,7 @@ public class TestSystemIdResolver extends SolrTestCaseJ4 {
   }
 
   public void testResolving() throws Exception {
-    final Path testHome = SolrTestCaseJ4.getFile("solr/collection1").getParentFile().toPath();
+    final Path testHome = SolrTestCaseJ4.getFile("solr/collection1").getParent();
     final ResourceLoader loader =
         new SolrResourceLoader(testHome.resolve("collection1"), this.getClass().getClassLoader());
     final SystemIdResolver resolver = new SystemIdResolver(loader);
@@ -130,7 +131,7 @@ public class TestSystemIdResolver extends SolrTestCaseJ4 {
   public void testUnsafeResolving() throws Exception {
     System.setProperty(SolrResourceLoader.SOLR_ALLOW_UNSAFE_RESOURCELOADING_PARAM, "true");
 
-    final Path testHome = SolrTestCaseJ4.getFile("solr/collection1").getParentFile().toPath();
+    final Path testHome = SolrTestCaseJ4.getFile("solr/collection1").getParent();
     final ResourceLoader loader =
         new SolrResourceLoader(testHome.resolve("collection1"), this.getClass().getClassLoader());
     final SystemIdResolver resolver = new SystemIdResolver(loader);

@@ -114,8 +114,8 @@ class JsonQueryConverter {
         }
       } else {
         if (qtype.equals("param")) {
-          boolean toplevel;
-          if (toplevel = (builder.length() == 0)) {
+          boolean toplevel = builder.length() == 0;
+          if (toplevel) {
             builder.append("{!v=");
           }
           builder.append("$").append(map.get("param"));
@@ -145,14 +145,13 @@ class JsonQueryConverter {
       } else {
         for (Map.Entry<String, Object> entry : map.entrySet()) {
           String key = entry.getKey();
-          if (entry.getValue() instanceof List) {
+          if (entry.getValue() instanceof List<?> l) {
             if (key.equals("query")) {
               throw new SolrException(
                   SolrException.ErrorCode.BAD_REQUEST,
                   "Error when parsing json query, value of query field should not be a list, found : "
                       + entry.getValue());
             }
-            List<?> l = (List<?>) entry.getValue();
             for (Object subVal : l) {
               builder.append(key).append("=");
               buildLocalParams(builder, subVal, true, additionalParams);

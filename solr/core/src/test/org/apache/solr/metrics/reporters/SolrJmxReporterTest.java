@@ -230,28 +230,29 @@ public class SolrJmxReporterTest extends SolrTestCaseJ4 {
     assertEquals("Unexpected number of indexDir beans: " + objects.toString(), 1, objects.size());
     final ObjectInstance inst = objects.iterator().next();
     final AtomicBoolean running = new AtomicBoolean(true);
-    try {
-      new Thread(
-              () -> {
-                while (running.get()) {
-                  try {
-                    Object value = TEST_MBEAN_SERVER.getAttribute(inst.getObjectName(), "Value");
-                    assertNotNull(value);
-                  } catch (InstanceNotFoundException x) {
-                    // no longer present
-                    break;
-                  } catch (Exception e) {
-                    fail("Unexpected error retrieving attribute: " + e);
-                  }
+    Thread testThread =
+        new Thread(
+            () -> {
+              while (running.get()) {
+                try {
+                  Object value = TEST_MBEAN_SERVER.getAttribute(inst.getObjectName(), "Value");
+                  assertNotNull(value);
+                } catch (InstanceNotFoundException x) {
+                  // no longer present
+                  break;
+                } catch (Exception e) {
+                  fail("Unexpected error retrieving attribute: " + e);
                 }
-              },
-              "TestMBeanThread")
-          .start();
-
+              }
+            },
+            "TestMBeanThread");
+    try {
+      testThread.start();
       // This should be enough time for the
       Thread.sleep(500);
     } finally {
       running.set(false);
+      testThread.join();
     }
 
     h.getCoreContainer().unload(h.getCore().getName());
@@ -272,7 +273,7 @@ public class SolrJmxReporterTest extends SolrTestCaseJ4 {
         coreMetricManager.getTag());
 
     String root2 = PREFIX + TestUtil.randomSimpleString(random(), 5, 10);
-    assertFalse(root2.equals(root1));
+    assertNotEquals(root2, root1);
     PluginInfo pluginInfo2 = createReporterPluginInfo(root2, false);
     metricManager.loadReporter(
         coreMetricManager.getRegistryName(),

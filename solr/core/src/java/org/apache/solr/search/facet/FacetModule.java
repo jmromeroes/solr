@@ -17,11 +17,11 @@
 package org.apache.solr.search.facet;
 
 import static org.apache.solr.common.util.Utils.fromJSONString;
+import static org.apache.solr.response.SolrQueryResponse.haveCompleteResults;
 
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.solr.client.solrj.SolrResponse;
@@ -31,13 +31,13 @@ import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.CollectionUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
-import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.QueryContext;
 import org.noggit.CharArr;
 import org.noggit.JSONWriter;
@@ -234,7 +234,7 @@ public class FacetModule extends SearchComponent {
 
       shardsRefineRequest.purpose |= PURPOSE_REFINE_JSON_FACETS;
 
-      Map<String, Object> finfo = new HashMap<>(1);
+      Map<String, Object> finfo = CollectionUtil.newHashMap(1);
       finfo.put(FACET_REFINE, refinement);
 
       // String finfoStr = JSONUtil.toJSON(finfo, -1);  // this doesn't handle formatting of Date
@@ -300,13 +300,8 @@ public class FacetModule extends SearchComponent {
       if (facet == null) {
         SimpleOrderedMap<?> shardResponseHeader =
             (SimpleOrderedMap<?>) rsp.getResponse().get("responseHeader");
-        if (Boolean.TRUE.equals(
-            shardResponseHeader.getBooleanArg(
-                SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY))) {
-          rb.rsp
-              .getResponseHeader()
-              .asShallowMap()
-              .put(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE);
+        if (!haveCompleteResults(shardResponseHeader)) {
+          rb.rsp.setPartialResults(rb.req);
         }
         continue;
       }
@@ -357,7 +352,7 @@ public class FacetModule extends SearchComponent {
   // TODO: perhaps factor out some sort of root/parent facet object that doesn't depend
   // on stuff like ResponseBuilder, but contains request parameters,
   // root filter lists (for filter exclusions), etc?
-  class FacetComponentState {
+  static class FacetComponentState {
     ResponseBuilder rb;
     Map<String, Object> facetCommands;
     FacetRequest facetRequest;
@@ -409,14 +404,14 @@ public class FacetModule extends SearchComponent {
       if (a < b) return -1;
       if (a > b) return 1;
 
-      if (a != a) { // a==NaN
-        if (b != b) {
+      if (Double.isNaN(a)) {
+        if (Double.isNaN(b)) {
           return 0; // both NaN
         }
         return -1 * direction.getMultiplier(); // asc==-1, so this will put NaN at end of sort
       }
 
-      if (b != b) { // b is NaN so a is greater
+      if (Double.isNaN(b)) { // b is NaN so a is greater
         return 1 * direction.getMultiplier(); // if sorting asc, make a less so NaN is at end
       }
 

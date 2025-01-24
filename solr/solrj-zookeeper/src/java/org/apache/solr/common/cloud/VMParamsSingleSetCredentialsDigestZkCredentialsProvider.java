@@ -16,7 +16,8 @@
  */
 package org.apache.solr.common.cloud;
 
-import java.util.Collection;
+import java.util.List;
+import org.apache.curator.framework.AuthInfo;
 
 /**
  * Deprecated in favor of a combination of {@link DigestZkCredentialsProvider} and {@link
@@ -35,7 +36,6 @@ public class VMParamsSingleSetCredentialsDigestZkCredentialsProvider
   public static final String DEFAULT_DIGEST_PASSWORD_VM_PARAM_NAME =
       VMParamsZkCredentialsInjector.DEFAULT_DIGEST_PASSWORD_VM_PARAM_NAME;
 
-  private ZkCredentialsInjector zkCredentialsInjector;
   private DigestZkCredentialsProvider digestZkCredentialsProvider;
 
   public VMParamsSingleSetCredentialsDigestZkCredentialsProvider() {
@@ -65,7 +65,7 @@ public class VMParamsSingleSetCredentialsDigestZkCredentialsProvider
   }
 
   @Override
-  protected Collection<ZkCredentials> createCredentials() {
+  protected List<AuthInfo> createCredentials() {
     return digestZkCredentialsProvider.createCredentials();
   }
 }

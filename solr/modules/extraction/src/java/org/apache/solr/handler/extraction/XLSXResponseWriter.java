@@ -264,8 +264,7 @@ class XLSXWriter extends TabularResponseWriter {
 
       } else {
         // normalize to first value
-        if (val instanceof Collection) {
-          Collection<?> values = (Collection<?>) val;
+        if (val instanceof Collection<?> values) {
           val = values.iterator().next();
         }
         writeVal(xlField.name, val);
@@ -282,11 +281,10 @@ class XLSXWriter extends TabularResponseWriter {
   @Override
   public void writeArray(String name, Iterator<?> val, boolean raw) throws IOException {
     assert !raw;
-    StringBuffer output = new StringBuffer();
+    StringBuilder output = new StringBuilder();
     while (val.hasNext()) {
       Object v = val.next();
-      if (v instanceof IndexableField) {
-        IndexableField f = (IndexableField) v;
+      if (v instanceof IndexableField f) {
         if (v instanceof Date) {
           output.append(((Date) val).toInstant().toString()).append("; ");
         } else {

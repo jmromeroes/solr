@@ -20,7 +20,6 @@ package org.apache.solr.handler.designer;
 import static org.apache.solr.common.params.CommonParams.VERSION_FIELD;
 import static org.apache.solr.update.processor.ParseDateFieldUpdateProcessorFactory.validateFormatter;
 
-import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
@@ -30,11 +29,10 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.ResolverStyle;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,7 +41,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.commons.lang3.LocaleUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.util.NamedList;
@@ -58,6 +55,7 @@ import org.apache.solr.update.processor.ParseBooleanFieldUpdateProcessorFactory;
 import org.apache.solr.update.processor.ParseDateFieldUpdateProcessorFactory;
 import org.apache.solr.update.processor.ParseDoubleFieldUpdateProcessorFactory;
 import org.apache.solr.update.processor.ParseLongFieldUpdateProcessorFactory;
+import org.apache.solr.util.LocaleUtils;
 
 // Just a quick hack to flush out the design, more intelligence is needed
 public class DefaultSchemaSuggester implements SchemaSuggester {
@@ -83,9 +81,9 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
       "Failed to parse all sample values as %s for changing type for field %s to %s";
 
   // boolean parsing
-  private final Set<String> trueValues = new HashSet<>(Arrays.asList("true"));
-  private final Set<String> falseValues = new HashSet<>(Arrays.asList("false"));
-  private final List<DateTimeFormatter> dateTimeFormatters = new LinkedList<>();
+  private final Set<String> trueValues = Set.of("true");
+  private final Set<String> falseValues = Set.of("false");
+  private final List<DateTimeFormatter> dateTimeFormatters = new ArrayList<>();
   private boolean caseSensitive = false;
 
   @Override
@@ -165,7 +163,7 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
     Locale locale = Locale.ROOT;
 
     boolean isMV = isMultiValued(sampleValues);
-    String fieldTypeName = guessFieldType(fieldName, sampleValues, schema, isMV, locale);
+    String fieldTypeName = guessFieldType(sampleValues, isMV, locale);
     FieldType fieldType = schema.getFieldTypeByName(fieldTypeName);
     if (fieldType == null) {
       // TODO: construct this field type on-the-fly ...
@@ -208,8 +206,7 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
                     f -> {
                       // skip the version field on incoming docs
                       if (!VERSION_FIELD.equals(f)) {
-                        List<Object> values =
-                            mapByField.computeIfAbsent(f, k -> new LinkedList<>());
+                        List<Object> values = mapByField.computeIfAbsent(f, k -> new ArrayList<>());
                         Collection<Object> fieldValues = doc.getFieldValues(f);
                         if (fieldValues != null && !fieldValues.isEmpty()) {
                           if (fieldValues.size() == 1) {
@@ -225,12 +222,7 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
     return mapByField;
   }
 
-  protected String guessFieldType(
-      String fieldName,
-      final List<Object> sampleValues,
-      IndexSchema schema,
-      boolean isMV,
-      Locale locale) {
+  protected String guessFieldType(final List<Object> sampleValues, boolean isMV, Locale locale) {
     String type = null;
 
     // flatten values to a single stream for easier analysis; also remove nulls
@@ -278,11 +270,10 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
     int maxLength = -1;
     int maxTerms = -1;
     for (Object next : values) {
-      if (!(next instanceof String)) {
+      if (!(next instanceof String cs)) {
         return false;
       }
 
-      String cs = (String) next;
       int len = cs.length();
       if (len > maxLength) {
         maxLength = len;
@@ -300,7 +291,7 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
         || maxTerms > 12
         || (maxTerms > 4
             && values.size() >= 10
-            && ((float) Sets.newHashSet(values).size() / values.size()) > 0.9f));
+            && ((float) Set.of(values).size() / values.size()) > 0.9f));
   }
 
   protected String isFloatOrDouble(List<Object> values, Locale locale) {
@@ -365,7 +356,7 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
     }
 
     // if all values are less than some smallish threshold, then it's likely this field holds small
-    // numbers but be very conservative here as it's simply an optimization and we can always fall
+    // numbers but be very conservative here as it's simply an optimization, and we can always fall
     // back to long
     return maxLong < 10000 ? "pint" : "plong";
   }
@@ -387,6 +378,7 @@ public class DefaultSchemaSuggester implements SchemaSuggester {
     return true;
   }
 
+  @Override
   public boolean isMultiValued(String name, List<SolrInputDocument> docs) {
     Map<String, List<Object>> transposed = transposeDocs(docs);
     List<Object> sampleValues = transposed.get(name);

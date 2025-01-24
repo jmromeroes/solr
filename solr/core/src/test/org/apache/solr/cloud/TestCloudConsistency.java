@@ -28,9 +28,9 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.solr.JSONTestUtil;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.cloud.SocketProxy;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
@@ -38,6 +38,7 @@ import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.embedded.JettySolrRunner;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -156,7 +157,7 @@ public class TestCloudConsistency extends SolrCloudTestCase {
     waitForState(
         "",
         collection,
-        (liveNodes, collectionState) ->
+        collectionState ->
             collectionState.getSlice("shard1").getReplicas().stream()
                     .filter(replica -> replica.getState() == Replica.State.DOWN)
                     .count()
@@ -169,7 +170,7 @@ public class TestCloudConsistency extends SolrCloudTestCase {
     waitForState(
         "",
         collection,
-        (liveNodes, collectionState) ->
+        collectionState ->
             collectionState.getReplica(leader.getName()).getState() == Replica.State.DOWN);
 
     cluster.getJettySolrRunner(1).start();
@@ -212,7 +213,7 @@ public class TestCloudConsistency extends SolrCloudTestCase {
     waitForState(
         "Timeout waiting for leader",
         collection,
-        (liveNodes, collectionState) -> {
+        collectionState -> {
           Replica newLeader = collectionState.getLeader("shard1");
           return newLeader != null && newLeader.getName().equals(leader.getName());
         });
@@ -239,7 +240,7 @@ public class TestCloudConsistency extends SolrCloudTestCase {
     waitForState(
         "Timeout waiting for leader goes DOWN",
         collection,
-        (liveNodes, collectionState) ->
+        collectionState ->
             collectionState.getReplica(leader.getName()).getState() == Replica.State.DOWN);
 
     // the meat of the test -- wait to see if a different replica become a leader
@@ -276,7 +277,7 @@ public class TestCloudConsistency extends SolrCloudTestCase {
     waitForState(
         "Timeout waiting for leader",
         collection,
-        (liveNodes, collectionState) -> {
+        collectionState -> {
           Replica newLeader = collectionState.getLeader("shard1");
           return newLeader != null && newLeader.getName().equals(leader.getName());
         });
@@ -298,7 +299,7 @@ public class TestCloudConsistency extends SolrCloudTestCase {
 
   private void addDoc(String collection, int docId, JettySolrRunner solrRunner)
       throws IOException, SolrServerException {
-    try (HttpSolrClient solrClient =
+    try (SolrClient solrClient =
         new HttpSolrClient.Builder(solrRunner.getBaseUrl().toString()).build()) {
       solrClient.add(
           collection,
@@ -311,8 +312,8 @@ public class TestCloudConsistency extends SolrCloudTestCase {
       List<Replica> notLeaders, String testCollectionName, int firstDocId, int lastDocId)
       throws Exception {
     Replica leader = cluster.getZkStateReader().getLeaderRetry(testCollectionName, "shard1", 10000);
-    HttpSolrClient leaderSolr = getHttpSolrClient(leader, testCollectionName);
-    List<HttpSolrClient> replicas = new ArrayList<>(notLeaders.size());
+    SolrClient leaderSolr = getHttpSolrClient(leader, testCollectionName);
+    List<SolrClient> replicas = new ArrayList<>(notLeaders.size());
 
     for (Replica r : notLeaders) {
       replicas.add(getHttpSolrClient(r, testCollectionName));
@@ -321,7 +322,7 @@ public class TestCloudConsistency extends SolrCloudTestCase {
       for (int d = firstDocId; d <= lastDocId; d++) {
         String docId = String.valueOf(d);
         assertDocExists(leaderSolr, docId);
-        for (HttpSolrClient replicaSolr : replicas) {
+        for (SolrClient replicaSolr : replicas) {
           assertDocExists(replicaSolr, docId);
         }
       }
@@ -329,36 +330,26 @@ public class TestCloudConsistency extends SolrCloudTestCase {
       if (leaderSolr != null) {
         leaderSolr.close();
       }
-      for (HttpSolrClient replicaSolr : replicas) {
+      for (SolrClient replicaSolr : replicas) {
         replicaSolr.close();
       }
     }
   }
 
-  private void assertDocExists(HttpSolrClient solr, String docId) throws Exception {
+  private void assertDocExists(SolrClient solr, String docId) throws Exception {
     NamedList<?> rsp = realTimeGetDocId(solr, docId);
     String match = JSONTestUtil.matchObj("/id", rsp.get("doc"), docId);
-    assertTrue(
-        "Doc with id="
-            + docId
-            + " not found in "
-            + solr.getBaseURL()
-            + " due to: "
-            + match
-            + "; rsp="
-            + rsp,
-        match == null);
+    assertNull("Doc with id=" + docId + " not found due to: " + match + "; rsp=" + rsp, match);
   }
 
-  private NamedList<Object> realTimeGetDocId(HttpSolrClient solr, String docId)
+  private NamedList<Object> realTimeGetDocId(SolrClient solr, String docId)
       throws SolrServerException, IOException {
     QueryRequest qr = new QueryRequest(params("qt", "/get", "id", docId, "distrib", "false"));
     return solr.request(qr);
   }
 
-  protected HttpSolrClient getHttpSolrClient(Replica replica, String coll) {
+  protected SolrClient getHttpSolrClient(Replica replica, String coll) {
     ZkCoreNodeProps zkProps = new ZkCoreNodeProps(replica);
-    String url = zkProps.getBaseUrl() + "/" + coll;
-    return getHttpSolrClient(url);
+    return getHttpSolrClient(zkProps.getBaseUrl(), coll);
   }
 }

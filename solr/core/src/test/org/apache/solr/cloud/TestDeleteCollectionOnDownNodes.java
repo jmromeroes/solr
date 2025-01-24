@@ -17,9 +17,10 @@
 
 package org.apache.solr.cloud;
 
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
+import org.apache.solr.embedded.JettySolrRunner;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -60,7 +61,7 @@ public class TestDeleteCollectionOnDownNodes extends SolrCloudTestCase {
     waitForState(
         "Timed out waiting for collection to be deleted",
         "halfdeletedcollection2",
-        (n, c) -> c == null);
+        Objects::isNull);
 
     assertFalse(
         "Still found collection that should be gone",

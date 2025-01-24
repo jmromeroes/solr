@@ -20,10 +20,10 @@ package org.apache.solr.common.util;
  * Fast, well distributed, cross-platform hash functions.
  *
  * <p>Development background: I was surprised to discovered that there isn't a good cross-platform
- * hash function defined for strings. MD5, SHA, FVN, etc, all define hash functions over bytes,
+ * hash function defined for strings. MD5, SHA, FVN, etc., all define hash functions over bytes,
  * meaning that it's under-specified for strings.
  *
- * <p>So I set out to create a standard 32 bit string hash that would be well defined for
+ * <p>So I set out to create a standard 32 bit string hash that would be well-defined for
  * implementation in all languages, have very high performance, and have very good hash properties
  * such as distribution. After evaluating all the options, I settled on using Bob Jenkins' lookup3
  * as a base. It's a well studied and very fast hash function, and the hashword variant can work
@@ -63,7 +63,7 @@ public class Hash {
    * @param offset offset of the start of the key
    * @param length length of the key
    * @param initval initial value to fold into the hash
-   * @return the 32 bit hash code
+   * @return the 32-bit hash code
    */
   @SuppressWarnings("fallthrough")
   public static int lookup3(int[] k, int offset, int length, int initval) {
@@ -77,26 +77,26 @@ public class Hash {
       c += k[i + 2];
 
       // mix(a,b,c)... Java needs "out" parameters!!!
-      // Note: recent JVMs (Sun JDK6) turn pairs of shifts (needed to do a rotate)
+      // Note: recent JVMs (Sun JDK6) turn pairs of shifts (needed to do a rotate operation)
       // into real x86 rotate instructions.
       {
         a -= c;
-        a ^= (c << 4) | (c >>> -4);
+        a ^= (c << 4) | (c >>> 28);
         c += b;
         b -= a;
-        b ^= (a << 6) | (a >>> -6);
+        b ^= (a << 6) | (a >>> 26);
         a += c;
         c -= b;
-        c ^= (b << 8) | (b >>> -8);
+        c ^= (b << 8) | (b >>> 24);
         b += a;
         a -= c;
-        a ^= (c << 16) | (c >>> -16);
+        a ^= (c << 16) | (c >>> 16);
         c += b;
         b -= a;
-        b ^= (a << 19) | (a >>> -19);
+        b ^= (a << 19) | (a >>> 13);
         a += c;
         c -= b;
-        c ^= (b << 4) | (b >>> -4);
+        c ^= (b << 4) | (b >>> 28);
         b += a;
       }
 
@@ -114,19 +114,19 @@ public class Hash {
         // final(a,b,c);
         {
           c ^= b;
-          c -= (b << 14) | (b >>> -14);
+          c -= (b << 14) | (b >>> 18);
           a ^= c;
-          a -= (c << 11) | (c >>> -11);
+          a -= (c << 11) | (c >>> 21);
           b ^= a;
-          b -= (a << 25) | (a >>> -25);
+          b -= (a << 25) | (a >>> 7);
           c ^= b;
-          c -= (b << 16) | (b >>> -16);
+          c -= (b << 16) | (b >>> 16);
           a ^= c;
-          a -= (c << 4) | (c >>> -4);
+          a -= (c << 4) | (c >>> 28);
           b ^= a;
-          b -= (a << 14) | (a >>> -14);
+          b -= (a << 14) | (a >>> 18);
           c ^= b;
-          c -= (b << 24) | (b >>> -24);
+          c -= (b << 24) | (b >>> 8);
         }
       case 0:
         break;
@@ -179,22 +179,22 @@ public class Hash {
       // into real x86 rotate instructions.
       {
         a -= c;
-        a ^= (c << 4) | (c >>> -4);
+        a ^= (c << 4) | (c >>> 28);
         c += b;
         b -= a;
-        b ^= (a << 6) | (a >>> -6);
+        b ^= (a << 6) | (a >>> 26);
         a += c;
         c -= b;
-        c ^= (b << 8) | (b >>> -8);
+        c ^= (b << 8) | (b >>> 24);
         b += a;
         a -= c;
-        a ^= (c << 16) | (c >>> -16);
+        a ^= (c << 16) | (c >>> 16);
         c += b;
         b -= a;
-        b ^= (a << 19) | (a >>> -19);
+        b ^= (a << 19) | (a >>> 13);
         a += c;
         c -= b;
-        c ^= (b << 4) | (b >>> -4);
+        c ^= (b << 4) | (b >>> 28);
         b += a;
       }
       mixed = true;
@@ -203,19 +203,19 @@ public class Hash {
     if (!mixed) {
       // final(a,b,c)
       c ^= b;
-      c -= (b << 14) | (b >>> -14);
+      c -= (b << 14) | (b >>> 18);
       a ^= c;
-      a -= (c << 11) | (c >>> -11);
+      a -= (c << 11) | (c >>> 21);
       b ^= a;
-      b -= (a << 25) | (a >>> -25);
+      b -= (a << 25) | (a >>> 7);
       c ^= b;
-      c -= (b << 16) | (b >>> -16);
+      c -= (b << 16) | (b >>> 16);
       a ^= c;
-      a -= (c << 4) | (c >>> -4);
+      a -= (c << 4) | (c >>> 28);
       b ^= a;
-      b -= (a << 14) | (a >>> -14);
+      b -= (a << 14) | (a >>> 18);
       c ^= b;
-      c -= (b << 24) | (b >>> -24);
+      c -= (b << 24) | (b >>> 8);
     }
 
     return c;
@@ -251,26 +251,26 @@ public class Hash {
       if (i >= end) break;
 
       // mix(a,b,c)... Java needs "out" parameters!!!
-      // Note: recent JVMs (Sun JDK6) turn pairs of shifts (needed to do a rotate)
+      // Note: recent JVMs (Sun JDK6) turn pairs of shifts (needed to do a rotate operation)
       // into real x86 rotate instructions.
       {
         a -= c;
-        a ^= (c << 4) | (c >>> -4);
+        a ^= (c << 4) | (c >>> 28);
         c += b;
         b -= a;
-        b ^= (a << 6) | (a >>> -6);
+        b ^= (a << 6) | (a >>> 26);
         a += c;
         c -= b;
-        c ^= (b << 8) | (b >>> -8);
+        c ^= (b << 8) | (b >>> 24);
         b += a;
         a -= c;
-        a ^= (c << 16) | (c >>> -16);
+        a ^= (c << 16) | (c >>> 16);
         c += b;
         b -= a;
-        b ^= (a << 19) | (a >>> -19);
+        b ^= (a << 19) | (a >>> 13);
         a += c;
         c -= b;
-        c ^= (b << 4) | (b >>> -4);
+        c ^= (b << 4) | (b >>> 28);
         b += a;
       }
       mixed = true;
@@ -279,19 +279,19 @@ public class Hash {
     if (!mixed) {
       // final(a,b,c)
       c ^= b;
-      c -= (b << 14) | (b >>> -14);
+      c -= (b << 14) | (b >>> 18);
       a ^= c;
-      a -= (c << 11) | (c >>> -11);
+      a -= (c << 11) | (c >>> 21);
       b ^= a;
-      b -= (a << 25) | (a >>> -25);
+      b -= (a << 25) | (a >>> 7);
       c ^= b;
-      c -= (b << 16) | (b >>> -16);
+      c -= (b << 16) | (b >>> 16);
       a ^= c;
-      a -= (c << 4) | (c >>> -4);
+      a -= (c << 4) | (c >>> 28);
       b ^= a;
-      b -= (a << 14) | (a >>> -14);
+      b -= (a << 14) | (a >>> 18);
       c ^= b;
-      c -= (b << 24) | (b >>> -24);
+      c -= (b << 24) | (b >>> 8);
     }
 
     return c + (((long) b) << 32);

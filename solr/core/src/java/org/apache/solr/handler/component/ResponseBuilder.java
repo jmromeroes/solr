@@ -60,7 +60,6 @@ public class ResponseBuilder {
   public boolean doExpand;
   public boolean doStats;
   public boolean doTerms;
-  public boolean doAnalytics;
   public MergeStrategy mergeFieldHandler;
 
   public String queryID;
@@ -73,9 +72,9 @@ public class ResponseBuilder {
 
   private boolean isCancellation;
   private String cancellationUUID;
-
   private String taskStatusCheckUUID;
   private boolean isTaskListRequest;
+  private boolean isDistribStatsDisabled;
 
   private QParser qparser = null;
   private String queryString = null;
@@ -123,13 +122,13 @@ public class ResponseBuilder {
    * public static final String LOCAL_SHARD = "local"; public static final String DOC_QUERY = "dq";
    * *
    */
-  public static int STAGE_START = 0;
+  public static final int STAGE_START = 0;
 
-  public static int STAGE_PARSE_QUERY = 1000;
-  public static int STAGE_TOP_GROUPS = 1500;
-  public static int STAGE_EXECUTE_QUERY = 2000;
-  public static int STAGE_GET_FIELDS = 3000;
-  public static int STAGE_DONE = Integer.MAX_VALUE;
+  public static final int STAGE_PARSE_QUERY = 1000;
+  public static final int STAGE_TOP_GROUPS = 1500;
+  public static final int STAGE_EXECUTE_QUERY = 2000;
+  public static final int STAGE_GET_FIELDS = 3000;
+  public static final int STAGE_DONE = Integer.MAX_VALUE;
 
   public int stage; // What stage is this current request at?
 
@@ -181,8 +180,6 @@ public class ResponseBuilder {
   StatsInfo _statsInfo;
   TermsComponent.TermsHelper _termsHelper;
   SimpleOrderedMap<List<NamedList<Object>>> _pivots;
-  Object _analyticsRequestManager;
-  boolean _isOlapAnalytics;
 
   // Context fields for grouping
   public final Map<String, Collection<SearchGroup<BytesRef>>> mergedSearchGroups = new HashMap<>();
@@ -447,10 +444,10 @@ public class ResponseBuilder {
   /** Sets results from a SolrIndexSearcher.QueryResult. */
   public void setResult(QueryResult result) {
     setResults(result.getDocListAndSet());
+    if (result.isPartialResultOmitted() || result.isPartialResults()) {
+      rsp.setPartialResults(req);
+    }
     if (result.isPartialResults()) {
-      rsp.getResponseHeader()
-          .asShallowMap()
-          .put(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE);
       if (getResults() != null && getResults().docList == null) {
         getResults().docList =
             new DocSlice(0, 0, new int[] {}, new float[] {}, 0, 0, TotalHits.Relation.EQUAL_TO);
@@ -492,30 +489,6 @@ public class ResponseBuilder {
     this.nextCursorMark = nextCursorMark;
   }
 
-  public void setAnalytics(boolean doAnalytics) {
-    this.doAnalytics = doAnalytics;
-  }
-
-  public boolean isAnalytics() {
-    return this.doAnalytics;
-  }
-
-  public void setAnalyticsRequestManager(Object analyticsRequestManager) {
-    this._analyticsRequestManager = analyticsRequestManager;
-  }
-
-  public Object getAnalyticsRequestManager() {
-    return this._analyticsRequestManager;
-  }
-
-  public void setOlapAnalytics(boolean isOlapAnalytics) {
-    this._isOlapAnalytics = isOlapAnalytics;
-  }
-
-  public boolean isOlapAnalytics() {
-    return this._isOlapAnalytics;
-  }
-
   public void setCancellation(boolean isCancellation) {
     this.isCancellation = isCancellation;
   }
@@ -546,5 +519,13 @@ public class ResponseBuilder {
 
   public String getTaskStatusCheckUUID() {
     return taskStatusCheckUUID;
+  }
+
+  public void setDistribStatsDisabled(boolean isEnableDistribStats) {
+    this.isDistribStatsDisabled = isEnableDistribStats;
+  }
+
+  public boolean isDistribStatsDisabled() {
+    return isDistribStatsDisabled;
   }
 }

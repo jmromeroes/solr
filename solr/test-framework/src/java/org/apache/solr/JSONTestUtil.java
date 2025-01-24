@@ -233,16 +233,15 @@ class CollectionTester {
     // generic fallback
     if (!expected.equals(val)) {
 
-      if (expected instanceof String) {
-        String str = (String) expected;
+      if (expected instanceof String str) {
         if (str.length() > 6 && str.startsWith("///") && str.endsWith("///")) {
           return handleSpecialString(str);
         }
       }
 
       // make an exception for some numerics
-      if ((expected instanceof Integer && val instanceof Long
-              || expected instanceof Long && val instanceof Integer)
+      if (((expected instanceof Integer && val instanceof Long)
+              || (expected instanceof Long && val instanceof Integer))
           && ((Number) expected).longValue() == ((Number) val).longValue()) {
         return true;
       } else if ((expected instanceof Double || expected instanceof Float)
@@ -345,7 +344,6 @@ class CollectionTester {
     }
 
     Set<String> keys = match != null ? match : expectedMap.keySet();
-    Set<String> visited = new HashSet<>();
 
     Iterator<Map.Entry<String, Object>> iter = ordered ? v.entrySet().iterator() : null;
 

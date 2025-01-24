@@ -454,7 +454,7 @@ abstract class FacetParser<T extends FacetRequest> {
     // HACK, but NamedList already handles the list processing for us...
     NamedList<String> nl = new NamedList<>();
     nl.addAll(jsonObject);
-    return SolrParams.toSolrParams(nl);
+    return nl.toSolrParams();
   }
 
   // TODO Make this private (or at least not static) and introduce
@@ -532,39 +532,13 @@ abstract class FacetParser<T extends FacetRequest> {
     }
   }
 
-  /* not a separate type of parser for now...
-  static class FacetBlockParentParser extends FacetParser<FacetBlockParent> {
-    public FacetBlockParentParser(FacetParser parent, String key) {
-      super(parent, key);
-      facet = new FacetBlockParent();
-    }
-
-    @Override
-    public FacetBlockParent parse(Object arg) throws SyntaxError {
-      parseCommonParams(arg);
-
-      if (arg instanceof String) {
-        // just the field name...
-        facet.parents = (String)arg;
-
-      } else if (arg instanceof Map) {
-        Map<String, Object> m = (Map<String, Object>) arg;
-        facet.parents = getString(m, "parents", null);
-
-        parseSubs( m.get("facet") );
-      }
-
-      return facet;
-    }
-  }
-  */
-
   static class FacetFieldParser extends FacetParser<FacetField> {
     public FacetFieldParser(FacetParser<?> parent, String key) {
       super(parent, key);
       facet = new FacetField();
     }
 
+    @Override
     public FacetField parse(Object arg) throws SyntaxError {
       parseCommonParams(arg);
       if (arg instanceof String) {
@@ -638,8 +612,7 @@ abstract class FacetParser<T extends FacetRequest> {
 
       FacetRequest.FacetSort facetSort = null;
 
-      if (sort instanceof String) {
-        String sortStr = (String) sort;
+      if (sort instanceof String sortStr) {
         if (sortStr.endsWith(" asc")) {
           facetSort =
               new FacetRequest.FacetSort(

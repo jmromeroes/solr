@@ -16,6 +16,8 @@
  */
 package org.apache.solr.core;
 
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.MetricFilter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,6 +26,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.ExecutorUtil;
@@ -32,6 +35,7 @@ import org.apache.solr.handler.ReplicationHandler;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.handler.component.QueryComponent;
 import org.apache.solr.handler.component.SpellCheckComponent;
+import org.apache.solr.metrics.SolrMetricManager;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.SolrQueryResponse;
@@ -129,6 +133,8 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
       ++ihCount;
       assertEquals(pathToClassMap.get("/update/json/docs"), "solr.UpdateRequestHandler");
       ++ihCount;
+      assertEquals(pathToClassMap.get("/update/cbor"), "solr.UpdateRequestHandler");
+      ++ihCount;
       assertEquals(pathToClassMap.get("/analysis/document"), "solr.DocumentAnalysisRequestHandler");
       ++ihCount;
       assertEquals(pathToClassMap.get("/analysis/field"), "solr.FieldAnalysisRequestHandler");
@@ -158,17 +164,17 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
     assertEquals(core.getRequestHandlers().get(path), handler1);
     core.close();
     cores.shutdown();
-    assertTrue("Handler not closed", handler1.closed == true);
+    assertTrue("Handler not closed", handler1.closed);
   }
 
   @Test
   public void testRefCount() {
     SolrCore core = h.getCore();
-    assertTrue("Refcount != 1", core.getOpenCount() == 1);
+    assertEquals("Refcount != 1", 1, core.getOpenCount());
 
     final CoreContainer cores = h.getCoreContainer();
     SolrCore c1 = cores.getCore(SolrTestCaseJ4.DEFAULT_TEST_CORENAME);
-    assertTrue("Refcount != 2", core.getOpenCount() == 2);
+    assertEquals("Refcount != 2", 2, core.getOpenCount());
 
     ClosingRequestHandler handler1 = new ClosingRequestHandler();
     handler1.inform(core);
@@ -181,26 +187,26 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
     SolrCore c2 = cores.getCore(SolrTestCaseJ4.DEFAULT_TEST_CORENAME);
     c1.close();
     assertTrue("Refcount < 1", core.getOpenCount() >= 1);
-    assertTrue("Handler is closed", handler1.closed == false);
+    assertFalse("Handler is closed", handler1.closed);
 
     c1 = cores.getCore(SolrTestCaseJ4.DEFAULT_TEST_CORENAME);
     assertTrue("Refcount < 2", core.getOpenCount() >= 2);
-    assertTrue("Handler is closed", handler1.closed == false);
+    assertFalse("Handler is closed", handler1.closed);
 
     c2.close();
     assertTrue("Refcount < 1", core.getOpenCount() >= 1);
-    assertTrue("Handler is closed", handler1.closed == false);
+    assertFalse("Handler is closed", handler1.closed);
 
     c1.close();
     cores.shutdown();
-    assertTrue("Refcount != 0", core.getOpenCount() == 0);
+    assertEquals("Refcount != 0", 0, core.getOpenCount());
     assertTrue("Handler not closed", core.isClosed() && handler1.closed == true);
   }
 
   @Test
   public void testRefCountMT() throws Exception {
     SolrCore core = h.getCore();
-    assertTrue("Refcount != 1", core.getOpenCount() == 1);
+    assertEquals("Refcount != 1", 1, core.getOpenCount());
 
     final ClosingRequestHandler handler1 = new ClosingRequestHandler();
     handler1.inform(core);
@@ -239,7 +245,7 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
                   yieldInt(l);
                   assertTrue("Refcount > 17", core.getOpenCount() <= 17);
                   yieldInt(l);
-                  assertTrue("Handler is closed", handler1.closed == false);
+                  assertFalse("Handler is closed", handler1.closed);
                   yieldInt(l);
                   core.close();
                   core = null;
@@ -260,7 +266,7 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
     }
 
     cores.shutdown();
-    assertTrue("Refcount != 0", core.getOpenCount() == 0);
+    assertEquals("Refcount != 0", 0, core.getOpenCount());
     assertTrue("Handler not closed", core.isClosed() && handler1.closed == true);
 
     service.shutdown();
@@ -293,7 +299,8 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
         "wrong config for slowQueryThresholdMillis", 2000, solrConfig.slowQueryThresholdMillis);
     assertEquals("wrong config for maxBooleanClauses", 1024, solrConfig.booleanQueryMaxClauseCount);
     assertEquals(
-        "wrong config for enableLazyFieldLoading", true, solrConfig.enableLazyFieldLoading);
+        "wrong config for minPrefixQueryTermLength", -1, solrConfig.prefixQueryMinPrefixLength);
+    assertTrue("wrong config for enableLazyFieldLoading", solrConfig.enableLazyFieldLoading);
     assertEquals("wrong config for queryResultWindowSize", 10, solrConfig.queryResultWindowSize);
   }
 
@@ -311,7 +318,7 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
     // make up for the fact that opening a searcher in this empty core is very fast by opening new
     // searchers continuously to increase the likelihood for race.
     SolrCore core = h.getCore();
-    assertTrue("Refcount != 1", core.getOpenCount() == 1);
+    assertEquals("Refcount != 1", 1, core.getOpenCount());
     executor.execute(new NewSearcherRunnable(core));
 
     // Since we called getCore() vs getCoreInc() and don't own a refCount, the container should
@@ -324,6 +331,62 @@ public class SolrCoreTest extends SolrTestCaseJ4 {
     // Check that all cores are closed and no searcher references are leaked.
     assertTrue("SolrCore " + core + " is not closed", core.isClosed());
     assertTrue(core.areAllSearcherReferencesEmpty());
+  }
+
+  /**
+   * Best effort attempt to recreate a deadlock between SolrCore initialization and Index metrics
+   * poll.
+   *
+   * <p>See https://issues.apache.org/jira/browse/SOLR-17060
+   */
+  @Test
+  public void testCoreInitDeadlockMetrics() throws Exception {
+    SolrMetricManager metricManager = h.getCoreContainer().getMetricManager();
+    CoreContainer coreContainer = h.getCoreContainer();
+
+    String coreName = "tmpCore";
+    AtomicBoolean created = new AtomicBoolean(false);
+    AtomicBoolean atLeastOnePoll = new AtomicBoolean(false);
+
+    final ExecutorService executor =
+        ExecutorUtil.newMDCAwareFixedThreadPool(
+            1, new SolrNamedThreadFactory("testCoreInitDeadlockMetrics"));
+    executor.execute(
+        () -> {
+          while (!created.get()) {
+            var metrics =
+                metricManager.getMetrics(
+                    "solr.core." + coreName,
+                    MetricFilter.startsWith(SolrInfoBean.Category.INDEX.toString()));
+            for (var m : metrics.values()) {
+              if (m instanceof Gauge) {
+                var v = ((Gauge<?>) m).getValue();
+                atLeastOnePoll.compareAndSet(false, v != null);
+              }
+            }
+
+            try {
+              TimeUnit.MILLISECONDS.sleep(5);
+            } catch (InterruptedException e1) {
+              throw new RuntimeException(e1);
+            }
+          }
+        });
+
+    TimeUnit.MILLISECONDS.sleep(25);
+    try (var tmpCore = coreContainer.create(coreName, Map.of("configSet", "minimal"))) {
+      tmpCore.open();
+      for (int i = 0; i < 10; i++) {
+        TimeUnit.MILLISECONDS.sleep(50); // to allow metrics to be checked at least once
+        if (atLeastOnePoll.get()) {
+          break;
+        }
+      }
+    } finally {
+      created.set(true);
+      ExecutorUtil.shutdownAndAwaitTermination(executor);
+    }
+    assertTrue(atLeastOnePoll.get());
   }
 
   private static class NewSearcherRunnable implements Runnable {

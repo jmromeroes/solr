@@ -20,10 +20,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.invoke.MethodHandles;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.apache.lucene.util.ResourceLoader;
 import org.apache.solr.common.SolrException;
@@ -121,11 +122,9 @@ public class OpenExchangeRatesOrgProvider implements ExchangeRateProvider {
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
+    if (!(o instanceof OpenExchangeRatesOrgProvider that)) return false;
 
-    OpenExchangeRatesOrgProvider that = (OpenExchangeRatesOrgProvider) o;
-
-    return !(rates != null ? !rates.equals(that.rates) : that.rates != null);
+    return Objects.equals(rates, that.rates);
   }
 
   @Override
@@ -151,7 +150,7 @@ public class OpenExchangeRatesOrgProvider implements ExchangeRateProvider {
     try {
       log.debug("Reloading exchange rates from {}", ratesFileLocation);
       try {
-        ratesJsonStream = (new URL(ratesFileLocation)).openStream();
+        ratesJsonStream = (new URI(ratesFileLocation).toURL()).openStream();
       } catch (Exception e) {
         ratesJsonStream = resourceLoader.openResource(ratesFileLocation);
       }
@@ -285,6 +284,7 @@ public class OpenExchangeRatesOrgProvider implements ExchangeRateProvider {
     public long getTimestamp() {
       return timestamp;
     }
+
     /**
      * Package protected method for test purposes
      *

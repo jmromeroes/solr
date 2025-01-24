@@ -544,6 +544,10 @@ abstract class FacetFieldProcessor extends FacetProcessor<FacetField> {
   private void calculateNumBuckets(SimpleOrderedMap<Object> target) throws IOException {
     DocSet domain = fcontext.base;
     if (freq.prefix != null) {
+      // TODO - Should we enforce minPrefixLength here in the case of 'string' fields, or omit
+      //  since this is an "internal" request? If we want to enforce the limit in this case,
+      //  we should have StrField read the configured limit and cache it in 'init' so that it can
+      //  be read at 'getPrefixQuery' call-time without a QParser.
       Query prefixFilter = sf.getType().getPrefixQuery(null, sf, freq.prefix);
       domain = fcontext.searcher.getDocSet(prefixFilter, domain);
     }
@@ -565,6 +569,7 @@ abstract class FacetFieldProcessor extends FacetProcessor<FacetField> {
 
     /** Filled in if and only if needed for resorting, deferred stats, or subfacets */
     Query bucketFilter;
+
     // TODO: we could potentially store the bucket's (DocSet)subDomain as well,
     // but that's much bigger object to hang onto for every slot at the sametime
     // Probably best to just trust the filterCache to do it's job
@@ -646,12 +651,14 @@ abstract class FacetFieldProcessor extends FacetProcessor<FacetField> {
         final Comparator<Slot> comparator =
             null != indexOrderAcc
                 ? (new Comparator<Slot>() {
+                  @Override
                   public int compare(Slot x, Slot y) {
                     final int cmp = resortMul * countAcc.compare(x.slot, y.slot);
                     return cmp != 0 ? cmp : indexOrderAcc.compare(x.slot, y.slot);
                   }
                 })
                 : (new Comparator<Slot>() {
+                  @Override
                   public int compare(Slot x, Slot y) {
                     final int cmp = resortMul * countAcc.compare(x.slot, y.slot);
                     return cmp != 0 ? cmp : Integer.compare(x.slot, y.slot);
@@ -665,6 +672,7 @@ abstract class FacetFieldProcessor extends FacetProcessor<FacetField> {
         Arrays.sort(
             slots,
             new Comparator<Slot>() {
+              @Override
               public int compare(Slot x, Slot y) {
                 return resortMul * indexOrderAcc.compare(x.slot, y.slot);
               }
@@ -714,12 +722,14 @@ abstract class FacetFieldProcessor extends FacetProcessor<FacetField> {
     final Comparator<Slot> comparator =
         null != indexOrderAcc
             ? (new Comparator<Slot>() {
+              @Override
               public int compare(Slot x, Slot y) {
                 final int cmp = resortMul * acc.compare(x.resortSlotNum, y.resortSlotNum);
                 return cmp != 0 ? cmp : indexOrderAcc.compare(x.slot, y.slot);
               }
             })
             : (new Comparator<Slot>() {
+              @Override
               public int compare(Slot x, Slot y) {
                 final int cmp = resortMul * acc.compare(x.resortSlotNum, y.resortSlotNum);
                 return cmp != 0 ? cmp : Integer.compare(x.slot, y.slot);
@@ -733,7 +743,7 @@ abstract class FacetFieldProcessor extends FacetProcessor<FacetField> {
   protected void processStats(
       SimpleOrderedMap<Object> bucket, Query bucketQ, DocSet docs, long docCount)
       throws IOException {
-    if (docCount == 0 && !freq.processEmpty || freq.getFacetStats().size() == 0) {
+    if ((docCount == 0 && !freq.processEmpty) || freq.getFacetStats().size() == 0) {
       bucket.add("count", docCount);
       return;
     }
@@ -885,8 +895,8 @@ abstract class FacetFieldProcessor extends FacetProcessor<FacetField> {
    * @see SweepingCountSlotAcc
    */
   protected boolean registerSweepingAccIfSupportedByCollectAcc() {
-    if (countAcc instanceof SweepingCountSlotAcc && collectAcc instanceof SweepableSlotAcc) {
-      final SweepingCountSlotAcc sweepingCountAcc = (SweepingCountSlotAcc) countAcc;
+    if (countAcc instanceof SweepingCountSlotAcc sweepingCountAcc
+        && collectAcc instanceof SweepableSlotAcc) {
       collectAcc = ((SweepableSlotAcc<?>) collectAcc).registerSweepingAccs(sweepingCountAcc);
       if (allBucketsAcc != null) {
         allBucketsAcc.collectAcc = collectAcc;

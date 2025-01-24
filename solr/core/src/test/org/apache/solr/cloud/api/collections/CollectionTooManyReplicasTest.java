@@ -19,12 +19,12 @@ package org.apache.solr.cloud.api.collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.cloud.SolrCloudTestCase;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
+import org.apache.solr.embedded.JettySolrRunner;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
@@ -112,7 +112,7 @@ public class CollectionTooManyReplicasTest extends SolrCloudTestCase {
     waitForState(
         "Expected to see all replicas active",
         collectionName,
-        (n, c) -> {
+        c -> {
           for (Replica r : c.getReplicas()) {
             if (r.getState() != Replica.State.ACTIVE) return false;
           }

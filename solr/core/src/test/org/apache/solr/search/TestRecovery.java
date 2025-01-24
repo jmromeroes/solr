@@ -653,7 +653,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
 
       Future<UpdateLog.RecoveryInfo> rinfoFuture = ulog.applyBufferedUpdates();
-      assertTrue(rinfoFuture == null);
+      assertNull(rinfoFuture);
       assertEquals(UpdateLog.State.ACTIVE, ulog.getState());
 
       ulog.bufferUpdates();
@@ -725,7 +725,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertEquals(6, bufferedOps.getValue() - initialOps);
 
       rinfoFuture = ulog.applyBufferedUpdates();
-      assertTrue(rinfoFuture != null);
+      assertNotNull(rinfoFuture);
 
       assertEquals(UpdateLog.State.APPLYING_BUFFERED, ulog.getState());
 
@@ -785,7 +785,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
       logReplay.drainPermits();
       rinfoFuture = ulog.applyBufferedUpdates();
-      assertTrue(rinfoFuture != null);
+      assertNotNull(rinfoFuture);
       assertEquals(UpdateLog.State.APPLYING_BUFFERED, ulog.getState());
 
       // apply a single update
@@ -880,7 +880,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       ulog.bufferUpdates();
       assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
       Future<UpdateLog.RecoveryInfo> rinfoFuture = ulog.applyBufferedUpdates();
-      assertTrue(rinfoFuture == null);
+      assertNull(rinfoFuture);
       assertEquals(UpdateLog.State.ACTIVE, ulog.getState());
 
       ulog.bufferUpdates();
@@ -1295,7 +1295,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
     assertU(commit());
     long D1Version2 = getVer(req("q", "id:D1"));
 
-    assert (D1Version2 > D1Version1);
+    assertTrue(D1Version2 > D1Version1);
 
     assertJQ(
         req("qt", "/get", "getVersions", "2"),
@@ -1352,6 +1352,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
     }
   }
 
+  @SuppressWarnings("JdkObsolete")
   private void addDocs(int nDocs, int start, LinkedList<Long> versions) throws Exception {
     for (int i = 0; i < nDocs; i++) {
       versions.addFirst(addAndGetVersion(sdoc("id", Integer.toString(start + nDocs)), null));
@@ -1359,6 +1360,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
   }
 
   @Test
+  @SuppressWarnings("JdkObsolete")
   public void testRemoveOldLogs() throws Exception {
     try {
       TestInjection.skipIndexWriterCommitOnClose = true;
@@ -1380,16 +1382,16 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertU(commit());
 
       UpdateLog ulog = h.getCore().getUpdateHandler().getUpdateLog();
-      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getLogDir());
+      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getTlogDir());
 
       h.close();
 
-      String[] files = ulog.getLogList(logDir);
+      String[] files = ulog.getLogList(logDir.toPath());
       for (String file : files) {
         Files.delete(new File(logDir, file).toPath());
       }
 
-      assertEquals(0, ulog.getLogList(logDir).length);
+      assertEquals(0, ulog.getLogList(logDir.toPath()).length);
 
       createCore();
 
@@ -1420,7 +1422,8 @@ public class TestRecovery extends SolrTestCaseJ4 {
         assertJQ(
             req("qt", "/get", "getVersions", "" + maxReq),
             "/versions==" + versions.subList(0, Math.min(maxReq, versExpected)));
-        assertEquals(Math.min(i, ulog.getMaxNumLogsToKeep()), ulog.getLogList(logDir).length);
+        assertEquals(
+            Math.min(i, ulog.getMaxNumLogsToKeep()), ulog.getLogList(logDir.toPath()).length);
       }
 
       docsPerBatch = ulog.getNumRecordsToKeep() + 20;
@@ -1441,7 +1444,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
           "/versions==" + versions.subList(0, Math.min(maxReq, versExpected)));
 
       // previous logs should be gone now
-      assertEquals(1, ulog.getLogList(logDir).length);
+      assertEquals(1, ulog.getLogList(logDir.toPath()).length);
 
       addDocs(1, numIndexed, versions);
       numIndexed += 1;
@@ -1478,7 +1481,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
           "/versions==" + versions.subList(0, Math.min(maxReq, expectedToRetain)));
 
       // previous logs should be gone now
-      assertEquals(1, ulog.getLogList(logDir).length);
+      assertEquals(1, ulog.getLogList(logDir.toPath()).length);
 
       //
       // test that a corrupt tlog file doesn't stop us from coming up, or seeing versions before
@@ -1490,7 +1493,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
           new LinkedList<
               Long>()); // don't add this to the versions list because we are going to lose it...
       h.close();
-      files = ulog.getLogList(logDir);
+      files = ulog.getLogList(logDir.toPath());
       Arrays.sort(files);
       try (RandomAccessFile raf =
           new RandomAccessFile(new File(logDir, files[files.length - 1]), "rw")) {
@@ -1536,7 +1539,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       UpdateLog.testing_logReplayFinishHook = () -> logReplayFinish.release();
 
       UpdateLog ulog = h.getCore().getUpdateHandler().getUpdateLog();
-      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getLogDir());
+      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getTlogDir());
 
       clearIndex();
       assertU(commit());
@@ -1546,7 +1549,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertU(adoc("id", "F3"));
 
       h.close();
-      String[] files = ulog.getLogList(logDir);
+      String[] files = ulog.getLogList(logDir.toPath());
       Arrays.sort(files);
       try (RandomAccessFile raf =
           new RandomAccessFile(new File(logDir, files[files.length - 1]), "rw")) {
@@ -1602,7 +1605,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       TestInjection.skipIndexWriterCommitOnClose = true;
 
       UpdateLog ulog = h.getCore().getUpdateHandler().getUpdateLog();
-      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getLogDir());
+      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getTlogDir());
 
       clearIndex();
       assertU(commit());
@@ -1613,7 +1616,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
       h.close();
 
-      String[] files = ulog.getLogList(logDir);
+      String[] files = ulog.getLogList(logDir.toPath());
       Arrays.sort(files);
       try (RandomAccessFile raf =
           new RandomAccessFile(new File(logDir, files[files.length - 1]), "rw")) {
@@ -1686,7 +1689,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       UpdateLog.testing_logReplayFinishHook = () -> logReplayFinish.release();
 
       UpdateLog ulog = h.getCore().getUpdateHandler().getUpdateLog();
-      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getLogDir());
+      File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getTlogDir());
 
       clearIndex();
       assertU(commit());
@@ -1696,7 +1699,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       assertU(adoc("id", "CCCCCC"));
 
       h.close();
-      String[] files = ulog.getLogList(logDir);
+      String[] files = ulog.getLogList(logDir.toPath());
       Arrays.sort(files);
       String fname = files[files.length - 1];
       byte[] content;
@@ -1727,7 +1730,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
           content);
 
       // WARNING... assumes format of .00000n where n is less than 9
-      long logNumber = Long.parseLong(fname.substring(fname.lastIndexOf(".") + 1));
+      long logNumber = Long.parseLong(fname.substring(fname.lastIndexOf('.') + 1));
       String fname2 =
           String.format(
               Locale.ROOT, UpdateLog.LOG_FILENAME_PATTERN, UpdateLog.TLOG_NAME, logNumber + 1);
@@ -1918,17 +1921,17 @@ public class TestRecovery extends SolrTestCaseJ4 {
   // stops the core, removes the transaction logs, restarts the core.
   void deleteLogs() throws Exception {
     UpdateLog ulog = h.getCore().getUpdateHandler().getUpdateLog();
-    File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getLogDir());
+    File logDir = new File(h.getCore().getUpdateHandler().getUpdateLog().getTlogDir());
 
     h.close();
 
     try {
-      String[] files = ulog.getLogList(logDir);
+      String[] files = ulog.getLogList(logDir.toPath());
       for (String file : files) {
         Files.delete(new File(logDir, file).toPath());
       }
 
-      assertEquals(0, ulog.getLogList(logDir).length);
+      assertEquals(0, ulog.getLogList(logDir.toPath()).length);
     } finally {
       // make sure we create the core again, even if the assert operation fails, so it won't mess
       // up the next test.
@@ -1967,7 +1970,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
   }
 
   static class VersionProvider {
-    private static long version = 0;
+    private static long version = 1;
 
     static String getNextVersion() {
       return Long.toString(version++);

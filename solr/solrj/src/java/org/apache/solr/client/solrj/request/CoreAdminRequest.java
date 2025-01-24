@@ -150,6 +150,7 @@ public class CoreAdminRequest extends SolrRequest<CoreAdminResponse> {
       return configSet;
     }
 
+    @Override
     public String getCollection() {
       return collection;
     }
@@ -344,6 +345,7 @@ public class CoreAdminRequest extends SolrRequest<CoreAdminResponse> {
       return params;
     }
 
+    @Override
     public String toString() {
       if (action != null) {
         return "WaitForState: " + getParams();
@@ -402,6 +404,7 @@ public class CoreAdminRequest extends SolrRequest<CoreAdminResponse> {
       this.shard = shard;
     }
 
+    @Override
     public String getCollection() {
       return collection;
     }
@@ -744,7 +747,7 @@ public class CoreAdminRequest extends SolrRequest<CoreAdminResponse> {
       String configFile,
       String schemaFile,
       String dataDir,
-      String tlogDir)
+      String ulogDir)
       throws SolrServerException, IOException {
     CoreAdminRequest.Create req = new CoreAdminRequest.Create();
     req.setCoreName(name);
@@ -752,8 +755,8 @@ public class CoreAdminRequest extends SolrRequest<CoreAdminResponse> {
     if (dataDir != null) {
       req.setDataDir(dataDir);
     }
-    if (tlogDir != null) {
-      req.setUlogDir(tlogDir);
+    if (ulogDir != null) {
+      req.setUlogDir(ulogDir);
     }
     if (configFile != null) {
       req.setConfigName(configFile);

@@ -34,6 +34,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
@@ -42,14 +44,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.cloud.SocketProxy;
-import org.apache.solr.client.solrj.embedded.JettyConfig;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
@@ -68,6 +69,7 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.ClusterState;
+import org.apache.solr.common.cloud.ClusterStateUtil;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
@@ -88,6 +90,8 @@ import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.Diagnostics;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.embedded.JettyConfig;
+import org.apache.solr.embedded.JettySolrRunner;
 import org.apache.solr.handler.ReplicationHandler;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.update.DirectUpdateHandler2;
@@ -102,8 +106,6 @@ import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.noggit.CharArr;
-import org.noggit.JSONWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -146,6 +148,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   protected volatile ChaosMonkey chaosMonkey;
 
   protected Map<String, CloudJettyRunner> shardToLeaderJetty = new ConcurrentHashMap<>();
+  protected Map<String, CloudSolrClient> solrClientByCollection = new ConcurrentHashMap<>();
   private static volatile boolean cloudInit;
   protected volatile boolean useJettyDataDir = true;
 
@@ -156,7 +159,10 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     public JettySolrRunner jetty;
     public String nodeName;
     public String coreNodeName;
+
+    /** Core or Collection URL */
     public String url;
+
     public CloudSolrServerClient client;
     public ZkNodeProps info;
 
@@ -171,13 +177,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     @Override
     public boolean equals(Object obj) {
       if (this == obj) return true;
-      if (obj == null) return false;
-      if (getClass() != obj.getClass()) return false;
-      CloudJettyRunner other = (CloudJettyRunner) obj;
-      if (url == null) {
-        if (other.url != null) return false;
-      } else if (!url.equals(other.url)) return false;
-      return true;
+      if (!(obj instanceof CloudJettyRunner other)) return false;
+      return Objects.equals(url, other.url);
     }
 
     @Override
@@ -213,13 +214,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     @Override
     public boolean equals(Object obj) {
       if (this == obj) return true;
-      if (obj == null) return false;
-      if (getClass() != obj.getClass()) return false;
-      CloudSolrServerClient other = (CloudSolrServerClient) obj;
-      if (solrClient == null) {
-        if (other.solrClient != null) return false;
-      } else if (!solrClient.equals(other.solrClient)) return false;
-      return true;
+      if (!(obj instanceof CloudSolrServerClient other)) return false;
+      return Objects.equals(solrClient, other.solrClient);
     }
   }
 
@@ -338,10 +334,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
 
   protected CloudSolrClient createCloudClient(String defaultCollection) {
-    CloudSolrClient client =
-        getCloudSolrClient(zkServer.getZkAddress(), random().nextBoolean(), 30000, 120000);
-    if (defaultCollection != null) client.setDefaultCollection(defaultCollection);
-    return client;
+    return getCloudSolrClient(
+        zkServer.getZkAddress(), defaultCollection, random().nextBoolean(), 30000, 120000);
   }
 
   @Override
@@ -363,7 +357,9 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     }
 
     controlClient =
-        new HttpSolrClient.Builder(controlJetty.getBaseUrl() + "/control_collection").build();
+        new HttpSolrClient.Builder(controlJetty.getBaseUrl().toString())
+            .withDefaultCollection("control_collection")
+            .build();
     if (sliceCount <= 0) {
       // for now, just create the cloud client for the control if we don't
       // create the normal cloud client.
@@ -477,7 +473,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
                 Replica.Type.TLOG,
                 ((currentI % sliceCount) + 1)); // nowarn
           }
-          customThreadPool.submit(
+          customThreadPool.execute(
               () -> {
                 try {
                   JettySolrRunner j =
@@ -502,11 +498,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
                   SolrClient client = createNewSolrClient(j.getLocalPort());
                   clients.add(client);
 
-                } catch (IOException e) {
-                  e.printStackTrace();
-                  throw new RuntimeException(e);
                 } catch (Exception e) {
-                  e.printStackTrace();
+                  log.error("error creating jetty", e);
                   throw new RuntimeException(e);
                 }
               });
@@ -522,7 +515,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
                 ((currentI % sliceCount) + 1)); // nowarn
           }
 
-          customThreadPool.submit(
+          customThreadPool.execute(
               () -> {
                 try {
                   JettySolrRunner j =
@@ -544,11 +537,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
                   coreClients.add(createNewSolrClient(coreName, j.getLocalPort()));
                   SolrClient client = createNewSolrClient(j.getLocalPort());
                   clients.add(client);
-                } catch (IOException e) {
-                  e.printStackTrace();
-                  throw new RuntimeException(e);
                 } catch (Exception e) {
-                  e.printStackTrace();
+                  log.error("error creating jetty", e);
                   throw new RuntimeException(e);
                 }
               });
@@ -562,7 +552,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
             jettyDir,
             Replica.Type.PULL,
             ((currentI % sliceCount) + 1)); // nowarn
-        customThreadPool.submit(
+        customThreadPool.execute(
             () -> {
               try {
                 JettySolrRunner j =
@@ -584,11 +574,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
                 coreClients.add(createNewSolrClient(coreName, j.getLocalPort()));
                 SolrClient client = createNewSolrClient(j.getLocalPort());
                 clients.add(client);
-              } catch (IOException e) {
-                e.printStackTrace();
-                throw new RuntimeException(e);
               } catch (Exception e) {
-                e.printStackTrace();
+                log.error("error creating jetty", e);
                 throw new RuntimeException(e);
               }
             });
@@ -603,7 +590,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
             new SolrNamedThreadFactory("createReplicaRequests"));
 
     for (CollectionAdminRequest<CollectionAdminResponse> r : createReplicaRequests) {
-      customThreadPool.submit(
+      customThreadPool.execute(
           () -> {
             CollectionAdminResponse response;
             try {
@@ -623,7 +610,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
         ExecutorUtil.newMDCAwareCachedThreadPool(
             new SolrNamedThreadFactory("createPullReplicaRequests"));
     for (CollectionAdminRequest<CollectionAdminResponse> r : createPullReplicaRequests) {
-      customThreadPool.submit(
+      customThreadPool.execute(
           () -> {
             CollectionAdminResponse response;
             try {
@@ -745,11 +732,9 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
 
     JettyConfig jettyconfig =
         JettyConfig.builder()
-            .setContext(context)
             .stopAtShutdown(false)
             .withServlets(getExtraServlets())
             .withFilters(getExtraRequestFilters())
-            .withSSLConfig(sslConfig.buildServerSSLConfig())
             .build();
 
     Properties props = new Properties();
@@ -765,6 +750,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     return jetty;
   }
 
+  @Override
   public final JettySolrRunner createJetty(
       File solrHome,
       String dataDir,
@@ -790,11 +776,9 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
 
     JettyConfig jettyconfig =
         JettyConfig.builder()
-            .setContext(context)
             .stopAtShutdown(false)
             .withServlets(getExtraServlets())
             .withFilters(getExtraRequestFilters())
-            .withSSLConfig(sslConfig.buildServerSSLConfig())
             .build();
 
     Properties props = new Properties();
@@ -815,7 +799,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
 
   /**
-   * Creates a JettySolrRunner with a socket proxy sitting infront of the Jetty server, which gives
+   * Creates a JettySolrRunner with a socket proxy sitting in front of the Jetty server, which gives
    * us the ability to simulate network partitions without having to fuss with IPTables.
    */
   public JettySolrRunner createProxiedJetty(
@@ -829,11 +813,9 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
 
     JettyConfig jettyconfig =
         JettyConfig.builder()
-            .setContext(context)
             .stopAtShutdown(false)
             .withServlets(getExtraServlets())
             .withFilters(getExtraRequestFilters())
-            .withSSLConfig(sslConfig.buildServerSSLConfig())
             .build();
 
     Properties props = new Properties();
@@ -980,7 +962,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
               list = new ArrayList<>();
               shardToJetty.put(slice.getName(), list);
             }
-            boolean isLeader = slice.getLeader() == replica;
+            boolean isLeader = Objects.equals(slice.getLeader(), replica);
             CloudJettyRunner cjr = new CloudJettyRunner();
             cjr.jetty = jetty;
             cjr.info = replica;
@@ -1045,10 +1027,14 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
 
   protected int sendDocsWithRetry(
-      List<SolrInputDocument> batch, int minRf, int maxRetries, int waitBeforeRetry)
+      String collectionName,
+      List<SolrInputDocument> batch,
+      int minRf,
+      int maxRetries,
+      int waitBeforeRetry)
       throws Exception {
     return sendDocsWithRetry(
-        cloudClient, cloudClient.getDefaultCollection(), batch, minRf, maxRetries, waitBeforeRetry);
+        cloudClient, collectionName, batch, minRf, maxRetries, waitBeforeRetry);
   }
 
   @SuppressWarnings("rawtypes")
@@ -1123,7 +1109,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     }
     controlClient.add(doc);
 
-    HttpSolrClient client = (HttpSolrClient) clients.get(serverNumber);
+    SolrClient client = clients.get(serverNumber);
 
     UpdateRequest ureq = new UpdateRequest();
     ureq.add(doc);
@@ -1739,7 +1725,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
 
     // now check that the right # are on each shard
     theShards = shardToJetty.keySet();
-    int cnt = 0;
+    long cnt = 0;
     for (String s : theShards) {
       int times = shardToJetty.get(s).size();
       for (int i = 0; i < times; i++) {
@@ -1825,7 +1811,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
           "Could not find collection "
               + DEFAULT_COLLECTION
               + " in "
-              + clusterState.getCollectionsMap().keySet());
+              + clusterState.getCollectionNames());
     }
 
     for (CloudJettyRunner cjetty : cloudJettys) {
@@ -1931,8 +1917,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       try {
         commit();
       } catch (Throwable t) {
-        t.printStackTrace();
-        // we don't care if this commit fails on some nodes
+        log.error("we don't care if this commit fails on some nodes", t);
       }
 
       updateMappingsFromZk(jettys, clients);
@@ -1994,25 +1979,26 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     ExecutorService customThreadPool =
         ExecutorUtil.newMDCAwareCachedThreadPool(new SolrNamedThreadFactory("closeThreadPool"));
 
-    customThreadPool.submit(() -> IOUtils.closeQuietly(commonCloudSolrClient));
+    customThreadPool.execute(() -> IOUtils.closeQuietly(commonCloudSolrClient));
 
-    customThreadPool.submit(() -> IOUtils.closeQuietly(controlClient));
+    customThreadPool.execute(() -> IOUtils.closeQuietly(controlClient));
 
-    customThreadPool.submit(
-        () ->
-            coreClients.parallelStream()
-                .forEach(
-                    c -> {
-                      IOUtils.closeQuietly(c);
-                    }));
+    for (SolrClient client : coreClients) {
+      customThreadPool.execute(() -> IOUtils.closeQuietly(client));
+    }
 
-    customThreadPool.submit(() -> IOUtils.closeQuietly(controlClientCloud));
+    for (SolrClient client : solrClientByCollection.values()) {
+      customThreadPool.execute(() -> IOUtils.closeQuietly(client));
+    }
 
-    customThreadPool.submit(() -> IOUtils.closeQuietly(cloudClient));
+    customThreadPool.execute(() -> IOUtils.closeQuietly(controlClientCloud));
+
+    customThreadPool.execute(() -> IOUtils.closeQuietly(cloudClient));
 
     ExecutorUtil.shutdownAndAwaitTermination(customThreadPool);
 
     coreClients.clear();
+    solrClientByCollection.clear();
 
     super.destroyServers();
   }
@@ -2098,7 +2084,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
 
     CollectionAdminResponse res = new CollectionAdminResponse();
     if (client == null) {
-      final String baseUrl = getBaseUrl((HttpSolrClient) clients.get(clientIndex));
+      final String baseUrl = getBaseUrl(jettys.get(clientIndex));
       try (SolrClient adminClient = createNewSolrClient("", baseUrl)) {
         res.setResponse(adminClient.request(request));
       }
@@ -2176,140 +2162,113 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
         configName);
   }
 
+  /**
+   * This method <i>may</i> randomize unspecified aspects of the resulting SolrClient. Tests that do
+   * not wish to have any randomized behavior should use the {@link
+   * org.apache.solr.client.solrj.impl.CloudSolrClient.Builder} class directly
+   */
+  public static CloudSolrClient getCloudSolrClient(
+      String zkHost,
+      String defaultCollection,
+      boolean shardLeadersOnly,
+      int connectionTimeoutMillis,
+      int socketTimeoutMillis) {
+    RandomizingCloudSolrClientBuilder builder =
+        new RandomizingCloudSolrClientBuilder(Collections.singletonList(zkHost), Optional.empty());
+    if (shardLeadersOnly) {
+      builder.sendUpdatesOnlyToShardLeaders();
+    } else {
+      builder.sendUpdatesToAllReplicasInShard();
+    }
+    if (defaultCollection != null) {
+      builder.withDefaultCollection(defaultCollection);
+    }
+    return builder
+        .withConnectionTimeout(connectionTimeoutMillis)
+        .withSocketTimeout(socketTimeoutMillis)
+        .build();
+  }
+
   @Override
   protected SolrClient createNewSolrClient(int port) {
     return createNewSolrClient(DEFAULT_COLLECTION, port);
   }
 
-  protected SolrClient createNewSolrClient(
-      int port, int connectionTimeoutMillis, int socketTimeoutMillis) {
-    return createNewSolrClient(
-        DEFAULT_COLLECTION, port, connectionTimeoutMillis, socketTimeoutMillis);
-  }
-
   protected SolrClient createNewSolrClient(String coreName, int port) {
-    try {
-      // setup the server...
-      String baseUrl = buildUrl(port);
-      String url = baseUrl + (baseUrl.endsWith("/") ? "" : "/") + coreName;
-      HttpSolrClient client = getHttpSolrClient(url, DEFAULT_CONNECTION_TIMEOUT, 60000);
-      return client;
-    } catch (Exception ex) {
-      throw new RuntimeException(ex);
-    }
-  }
-
-  protected SolrClient createNewSolrClient(
-      String coreName, int port, int connectionTimeoutMillis, int socketTimeoutMillis) {
-    try {
-      // setup the server...
-      String baseUrl = buildUrl(port);
-      String url = baseUrl + (baseUrl.endsWith("/") ? "" : "/") + coreName;
-      HttpSolrClient client = getHttpSolrClient(url, connectionTimeoutMillis, socketTimeoutMillis);
-      return client;
-    } catch (Exception ex) {
-      throw new RuntimeException(ex);
-    }
+    String baseUrl = buildUrl(port);
+    return new HttpSolrClient.Builder(baseUrl)
+        .withDefaultCollection(coreName)
+        .withConnectionTimeout(DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)
+        .withSocketTimeout(60000, TimeUnit.MILLISECONDS)
+        .build();
   }
 
   protected SolrClient createNewSolrClient(String collection, String baseUrl) {
-    try {
-      // setup the server...
-      HttpSolrClient client =
-          getHttpSolrClient(baseUrl + "/" + collection, DEFAULT_CONNECTION_TIMEOUT, 60000);
-      return client;
-    } catch (Exception ex) {
-      throw new RuntimeException(ex);
-    }
+    return getHttpSolrClient(baseUrl, collection);
   }
 
-  protected String getBaseUrl(HttpSolrClient client) {
-    return client
-        .getBaseURL()
-        .substring(0, client.getBaseURL().length() - DEFAULT_COLLECTION.length() - 1);
+  protected String getBaseUrl(JettySolrRunner jetty) {
+    return jetty.getBaseUrl().toString();
   }
 
   public static SolrInputDocument getDoc(Object... fields) throws Exception {
     return sdoc(fields);
   }
 
-  private String checkCollectionExpectations(
-      String collectionName,
-      List<Integer> numShardsNumReplicaList,
-      List<String> nodesAllowedToRunShards)
-      throws IOException {
-    getCommonCloudSolrClient();
-    ClusterState clusterState = cloudClient.getClusterState();
-    int expectedSlices = numShardsNumReplicaList.get(0);
-    // The Math.min thing is here, because we expect replication-factor to be reduced to if there
-    // are not enough live nodes to spread all shards of a collection over different nodes
-    int expectedShardsPerSlice = numShardsNumReplicaList.get(1);
-    int expectedTotalShards = expectedSlices * expectedShardsPerSlice;
-
-    //      Map<String,DocCollection> collections = clusterState
-    //          .getCollectionStates();
-    if (clusterState.hasCollection(collectionName)) {
-      Map<String, Slice> slices = clusterState.getCollection(collectionName).getSlicesMap();
-      // did we find expectedSlices slices/shards?
-      if (slices.size() != expectedSlices) {
-        return "Found new collection "
-            + collectionName
-            + ", but mismatch on number of slices. Expected: "
-            + expectedSlices
-            + ", actual: "
-            + slices.size();
-      }
-      int totalShards = 0;
-      for (String sliceName : slices.keySet()) {
-        for (Replica replica : slices.get(sliceName).getReplicas()) {
-          if (nodesAllowedToRunShards != null
-              && !nodesAllowedToRunShards.contains(replica.getStr(ZkStateReader.NODE_NAME_PROP))) {
-            return "Shard "
-                + replica.getName()
-                + " created on node "
-                + replica.getNodeName()
-                + " not allowed to run shards for the created collection "
-                + collectionName;
-          }
-        }
-        totalShards += slices.get(sliceName).getReplicas().size();
-      }
-      if (totalShards != expectedTotalShards) {
-        return "Found new collection "
-            + collectionName
-            + " with correct number of slices, but mismatch on number of shards. Expected: "
-            + expectedTotalShards
-            + ", actual: "
-            + totalShards;
-      }
-      return null;
-    } else {
-      return "Could not find new collection " + collectionName;
-    }
-  }
-
-  protected void checkForCollection(
-      String collectionName,
-      List<Integer> numShardsNumReplicaList,
-      List<String> nodesAllowedToRunShards)
+  protected void checkForCollection(String collectionName, List<Integer> numShardsNumReplicaList)
       throws Exception {
     // check for an expectedSlices new collection - we poll the state
-    final TimeOut timeout = new TimeOut(120, TimeUnit.SECONDS, TimeSource.NANO_TIME);
-    boolean success = false;
-    String checkResult = "Didnt get to perform a single check";
-    while (!timeout.hasTimedOut()) {
-      checkResult =
-          checkCollectionExpectations(
-              collectionName, numShardsNumReplicaList, nodesAllowedToRunShards);
-      if (checkResult == null) {
-        success = true;
-        break;
-      }
-      Thread.sleep(500);
-    }
-    if (!success) {
-      super.printLayout();
-      fail(checkResult);
+    ZkStateReader reader = ZkStateReader.from(cloudClient);
+
+    AtomicReference<String> message = new AtomicReference<>();
+    try {
+      reader.waitForState(
+          collectionName,
+          120,
+          TimeUnit.SECONDS,
+          c -> {
+            int expectedSlices = numShardsNumReplicaList.get(0);
+            // The Math.min thing is here, because we expect replication-factor to be reduced to if
+            // there are not enough live nodes to spread all shards of a collection over different
+            // nodes.
+            int expectedShardsPerSlice = numShardsNumReplicaList.get(1);
+            int expectedTotalShards = expectedSlices * expectedShardsPerSlice;
+
+            if (c != null) {
+              Collection<Slice> slices = c.getSlices();
+              // did we find expectedSlices slices/shards?
+              if (slices.size() != expectedSlices) {
+                message.set(
+                    "Found new collection "
+                        + collectionName
+                        + ", but mismatch on number of slices. Expected: "
+                        + expectedSlices
+                        + ", actual: "
+                        + slices.size());
+                return false;
+              }
+              int totalShards = 0;
+              for (Slice slice : slices) {
+                totalShards += slice.getReplicas().size();
+              }
+              if (totalShards != expectedTotalShards) {
+                message.set(
+                    "Found new collection "
+                        + collectionName
+                        + " with correct number of slices, but mismatch on number of shards. Expected: "
+                        + expectedTotalShards
+                        + ", actual: "
+                        + totalShards);
+                return false;
+              }
+              return true;
+            } else {
+              message.set("Could not find new collection " + collectionName);
+              return false;
+            }
+          });
+    } catch (TimeoutException e) {
+      fail(message.get());
     }
   }
 
@@ -2319,8 +2278,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     synchronized (this) {
       if (commonCloudSolrClient == null) {
         commonCloudSolrClient =
-            getCloudSolrClient(zkServer.getZkAddress(), random().nextBoolean(), 5000, 120000);
-        commonCloudSolrClient.setDefaultCollection(DEFAULT_COLLECTION);
+            getCloudSolrClient(
+                zkServer.getZkAddress(), DEFAULT_COLLECTION, random().nextBoolean(), 5000, 120000);
         commonCloudSolrClient.connect();
         if (log.isInfoEnabled()) {
           log.info(
@@ -2333,7 +2292,35 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     return commonCloudSolrClient;
   }
 
-  public static String getUrlFromZk(ClusterState clusterState, String collection) {
+  protected CloudSolrClient getSolrClient(String collectionName) {
+    return solrClientByCollection.computeIfAbsent(
+        collectionName,
+        k -> {
+          CloudSolrClient solrClient =
+              getCloudSolrClient(
+                  zkServer.getZkAddress(), collectionName, random().nextBoolean(), 5000, 120000);
+
+          solrClient.connect();
+          if (log.isInfoEnabled()) {
+            log.info(
+                "Created solrClient for collection {} with updatesToLeaders={} and parallelUpdates={}",
+                collectionName,
+                solrClient.isUpdatesToLeaders(),
+                solrClient.isParallelUpdates());
+          }
+          return solrClient;
+        });
+  }
+
+  /**
+   * Returns the base URL of a live Solr node hosting the specified collection
+   *
+   * <p>Note that the returned URL does not contain the collection name itself.
+   *
+   * @param clusterState used to identify which live nodes host the collection
+   * @param collection the name of the collection to search for
+   */
+  public static String getBaseUrlFromZk(ClusterState clusterState, String collection) {
     Map<String, Slice> slices = clusterState.getCollection(collection).getSlicesMap();
 
     if (slices == null) {
@@ -2349,7 +2336,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
         final ZkNodeProps node = shardEntry.getValue();
         final String nodeName = node.getStr(ZkStateReader.NODE_NAME_PROP);
         if (clusterState.liveNodesContain(nodeName)) {
-          return ZkCoreNodeProps.getCoreUrl(node.getStr(ZkStateReader.BASE_URL_PROP), collection);
+          return node.getStr(ZkStateReader.BASE_URL_PROP);
         }
       }
     }
@@ -2357,7 +2344,8 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     throw new RuntimeException("Could not find a live node for collection:" + collection);
   }
 
-  public static void waitForNon403or404or503(HttpSolrClient collectionClient) throws Exception {
+  public static void waitForNon403or404or503(SolrClient collectionClient, String baseUrl)
+      throws Exception {
     SolrException exp = null;
     final TimeOut timeout = new TimeOut(30, TimeUnit.SECONDS, TimeSource.NANO_TIME);
 
@@ -2379,11 +2367,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       Thread.sleep(50);
     }
 
-    fail(
-        "Could not find the new collection - "
-            + exp.code()
-            + " : "
-            + collectionClient.getBaseURL());
+    fail("Could not find the new collection - " + exp.code() + " : " + baseUrl);
   }
 
   protected void createCollection(
@@ -2461,7 +2445,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
 
     ClusterState cs = zkr.getClusterState();
     Collection<Slice> slices = cs.getCollection(testCollectionName).getActiveSlices();
-    assertTrue(slices.size() == shards);
+    assertEquals(slices.size(), shards);
     boolean allReplicasUp = false;
     long waitMs = 0L;
     long maxWaitMs = maxWaitSecs * 1000L;
@@ -2478,9 +2462,10 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
       assertNotNull("No Slice for " + shardId, shard);
       allReplicasUp = true; // assume true
       Collection<Replica> replicas = shard.getReplicas();
-      assertTrue(
+      assertEquals(
           "Did not find correct number of replicas. Expected:" + rf + " Found:" + replicas.size(),
-          replicas.size() == rf);
+          replicas.size(),
+          rf);
 
       leader = shard.getLeader();
       assertNotNull(leader);
@@ -2551,10 +2536,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     if (collection != null) {
       cs = clusterState.getCollection(collection).toString();
     } else {
-      Map<String, DocCollection> map = clusterState.getCollectionsMap();
-      CharArr out = new CharArr();
-      new JSONWriter(out, 2).write(map);
-      cs = out.toString();
+      cs = ClusterStateUtil.toDebugAllStatesString(clusterState);
     }
     return cs;
   }
@@ -2563,7 +2545,7 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
     ZkCoreNodeProps coreProps = new ZkCoreNodeProps(replica);
     String coreName = coreProps.getCoreName();
     boolean reloadedOk = false;
-    try (HttpSolrClient client = getHttpSolrClient(coreProps.getBaseUrl())) {
+    try (SolrClient client = getHttpSolrClient(coreProps.getBaseUrl())) {
       CoreAdminResponse statusResp = CoreAdminRequest.getStatus(coreName, client);
       long leaderCoreStartTime = statusResp.getStartTime(coreName).getTime();
 
@@ -2747,7 +2729,10 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
 
   protected long getIndexVersion(Replica replica) throws IOException {
-    try (HttpSolrClient client = new HttpSolrClient.Builder(replica.getCoreUrl()).build()) {
+    try (SolrClient client =
+        new HttpSolrClient.Builder(replica.getBaseUrl())
+            .withDefaultCollection(replica.getCoreName())
+            .build()) {
       ModifiableSolrParams params = new ModifiableSolrParams();
       params.set("qt", "/replication");
       params.set(ReplicationHandler.COMMAND, ReplicationHandler.CMD_SHOW_COMMITS);
@@ -2794,7 +2779,10 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
 
   protected void logReplicationDetails(Replica replica, StringBuilder builder) throws IOException {
-    try (HttpSolrClient client = new HttpSolrClient.Builder(replica.getCoreUrl()).build()) {
+    try (SolrClient client =
+        new HttpSolrClient.Builder(replica.getBaseUrl())
+            .withDefaultCollection(replica.getCoreName())
+            .build()) {
       ModifiableSolrParams params = new ModifiableSolrParams();
       params.set("qt", "/replication");
       params.set(ReplicationHandler.COMMAND, ReplicationHandler.CMD_DETAILS);
@@ -2856,8 +2844,10 @@ public abstract class AbstractFullDistribZkTestBase extends AbstractDistribZkTes
   }
 
   protected void setupRestTestHarnesses() {
-    for (final SolrClient client : clients) {
-      RestTestHarness harness = new RestTestHarness(() -> ((HttpSolrClient) client).getBaseURL());
+    for (final JettySolrRunner jetty : jettys) {
+      RestTestHarness harness =
+          new RestTestHarness(
+              () -> jetty.getBaseUrl().toString() + "/" + DEFAULT_TEST_COLLECTION_NAME);
       restTestHarnesses.add(harness);
     }
   }

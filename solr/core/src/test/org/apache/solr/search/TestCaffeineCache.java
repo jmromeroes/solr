@@ -65,13 +65,13 @@ public class TestCaffeineCache extends SolrTestCase {
     }
     assertEquals("15", lfuCache.get(15));
     assertEquals("75", lfuCache.get(75));
-    assertEquals(null, lfuCache.get(110));
+    assertNull(lfuCache.get(110));
     Map<String, Object> nl = lfuCache.getMetricsMap().getValue();
     assertEquals(3L, nl.get("lookups"));
     assertEquals(2L, nl.get("hits"));
     assertEquals(101L, nl.get("inserts"));
 
-    assertEquals(null, lfuCache.get(1)); // first item put in should be the first out
+    assertNull(lfuCache.get(1)); // first item put in should be the first out
 
     // Test autowarming
     newLFUCache.init(params, initObj, regenerator);
@@ -81,7 +81,7 @@ public class TestCaffeineCache extends SolrTestCase {
     newLFUCache.put(103, "103");
     assertEquals("15", newLFUCache.get(15));
     assertEquals("75", newLFUCache.get(75));
-    assertEquals(null, newLFUCache.get(50));
+    assertNull(newLFUCache.get(50));
     nl = newLFUCache.getMetricsMap().getValue();
     assertEquals(3L, nl.get("lookups"));
     assertEquals(2L, nl.get("hits"));
@@ -308,7 +308,7 @@ public class TestCaffeineCache extends SolrTestCase {
 
     cache.put(0, "test");
     long nonEmptySize = cache.ramBytesUsed();
-    cache.put(0, "test");
+    cache.put(0, random().nextBoolean() ? "test" : "rest");
     assertEquals(nonEmptySize, cache.ramBytesUsed());
 
     cache.remove(0);
@@ -341,7 +341,7 @@ public class TestCaffeineCache extends SolrTestCase {
 
     cache.put(0, "test");
     long nonEmptySize = cache.ramBytesUsed();
-    cache.put(0, "test");
+    cache.put(0, random().nextBoolean() ? "test" : "rest");
     assertEquals(nonEmptySize, cache.ramBytesUsed());
 
     cache.remove(0);

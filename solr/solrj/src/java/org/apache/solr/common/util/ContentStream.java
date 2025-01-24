@@ -19,10 +19,13 @@ package org.apache.solr.common.util;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import org.apache.solr.client.solrj.request.RequestWriter.ContentWriter;
 
 /**
  * @since solr 1.2
+ * @deprecated Use {@link ContentWriter} instead.
  */
+@Deprecated
 public interface ContentStream {
   String getName();
 
@@ -52,7 +55,7 @@ public interface ContentStream {
    * work. The runtime behavior for additional calls is undefined.
    *
    * <p>Note: you must call <code>getStream()</code> or <code>getReader()</code> before the
-   * attributes (name, contentType, etc) are guaranteed to be set. Streams may be lazy loaded only
+   * attributes (name, contentType, etc.) are guaranteed to be set. Streams may be lazy loaded only
    * when this method is called.
    */
   InputStream getStream() throws IOException;
@@ -74,7 +77,7 @@ public interface ContentStream {
    * work. The runtime behavior for additional calls is undefined.
    *
    * <p>Note: you must call <code>getStream()</code> or <code>getReader()</code> before the
-   * attributes (name, contentType, etc) are guaranteed to be set. Streams may be lazy loaded only
+   * attributes (name, contentType, etc.) are guaranteed to be set. Streams may be lazy loaded only
    * when this method is called.
    */
   Reader getReader() throws IOException;

@@ -42,6 +42,7 @@ public class RequestHandlerMetricsTest extends SolrCloudTestCase {
     configureCluster(1).addConfig("conf1", configset("cloud-aggregate-node-metrics")).configure();
   }
 
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();
@@ -80,7 +81,7 @@ public class RequestHandlerMetricsTest extends SolrCloudTestCase {
     cloudClient.query(collection2, solrQuery);
 
     NamedList<Object> response =
-        cloudClient.request(new GenericSolrRequest(SolrRequest.METHOD.GET, "/admin/metrics", null));
+        cloudClient.request(new GenericSolrRequest(SolrRequest.METHOD.GET, "/admin/metrics"));
 
     NamedList<Object> metrics = (NamedList<Object>) response.get("metrics");
 
@@ -89,11 +90,10 @@ public class RequestHandlerMetricsTest extends SolrCloudTestCase {
     final double[] minUpdateTime = {Double.MAX_VALUE};
     final double[] maxUpdateTime = {-1.0};
     Set<NamedList<Object>> coreMetrics = new HashSet<>();
-    metrics.forEachKey(
-        (key) -> {
+    metrics.forEach(
+        (key, coreMetric) -> {
           if (key.startsWith("solr.core.testRequestHandlerMetrics")) {
-            NamedList<Object> coreMetric = (NamedList<Object>) metrics.get(key);
-            coreMetrics.add(coreMetric);
+            coreMetrics.add((NamedList<Object>) coreMetric);
           }
         });
     assertEquals(2, coreMetrics.size());

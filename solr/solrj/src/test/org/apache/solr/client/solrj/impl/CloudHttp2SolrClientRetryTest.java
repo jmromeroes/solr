@@ -41,7 +41,6 @@ public class CloudHttp2SolrClientRetryTest extends SolrCloudTestCase {
         .addConfig(
             "conf",
             getFile("solrj")
-                .toPath()
                 .resolve("solr")
                 .resolve("configsets")
                 .resolve("streaming")
@@ -52,7 +51,7 @@ public class CloudHttp2SolrClientRetryTest extends SolrCloudTestCase {
   @Test
   public void testRetry() throws Exception {
     String collectionName = "testRetry";
-    try (CloudHttp2SolrClient solrClient =
+    try (CloudSolrClient solrClient =
         new CloudHttp2SolrClient.Builder(
                 Collections.singletonList(cluster.getZkServer().getZkAddress()), Optional.empty())
             .build()) {

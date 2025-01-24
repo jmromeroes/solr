@@ -634,7 +634,7 @@ public class TestMinMaxOnMultiValuedField extends SolrTestCaseJ4 {
       @SuppressWarnings({"rawtypes"}) final Comparable... vals) {
     clearIndex();
 
-    assert 0 < vals.length;
+    assertTrue(0 < vals.length);
     @SuppressWarnings({"rawtypes"})
     Comparable min = vals[0];
     @SuppressWarnings({"rawtypes"})
@@ -765,6 +765,7 @@ public class TestMinMaxOnMultiValuedField extends SolrTestCaseJ4 {
         "//result[@numFound='" + numDocs + "']",
         "//result/doc[1]/str[@name='id']='0'");
   }
+
   /** helper for testSimpleSort */
   private static void assertDocWithValsIsLast(final int numDocs, final String sort) {
     assertQ(
@@ -1054,7 +1055,7 @@ public class TestMinMaxOnMultiValuedField extends SolrTestCaseJ4 {
     }
     assertQ(
         req("q", "*:*", "rows", "" + sortedDocs.size(), "sort", sort),
-        xpaths.toArray(new String[xpaths.size()]));
+        xpaths.toArray(new String[0]));
   }
 
   /**

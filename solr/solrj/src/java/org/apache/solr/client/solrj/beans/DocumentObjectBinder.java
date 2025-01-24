@@ -112,8 +112,7 @@ public class DocumentObjectBinder {
   private void addChild(Object obj, DocField field, SolrInputDocument doc) {
     Object val = field.get(obj);
     if (val == null) return;
-    if (val instanceof Collection) {
-      Collection<?> collection = (Collection<?>) val;
+    if (val instanceof Collection<?> collection) {
       for (Object o : collection) {
         SolrInputDocument child = toSolrInputDocument(o);
         doc.addChildDocument(child);
@@ -136,6 +135,7 @@ public class DocumentObjectBinder {
     return fields;
   }
 
+  @SuppressWarnings("removal")
   @SuppressForbidden(reason = "Needs access to possibly private @Field annotated fields/methods")
   private List<DocField> collectInfo(Class<?> clazz) {
     List<DocField> fields = new ArrayList<>();
@@ -284,9 +284,8 @@ public class DocumentObjectBinder {
         // assigned a default type
         type = Object.class;
         if (field != null) {
-          if (field.getGenericType() instanceof ParameterizedType) {
+          if (field.getGenericType() instanceof ParameterizedType parameterizedType) {
             // check what are the generic values
-            ParameterizedType parameterizedType = (ParameterizedType) field.getGenericType();
             Type[] types = parameterizedType.getActualTypeArguments();
             if (types != null && types.length == 2 && types[0] == String.class) {
               // the key should always be String
@@ -353,9 +352,9 @@ public class DocumentObjectBinder {
 
     /**
      * Called by the {@link #inject} method to read the value(s) for a field This method supports
-     * reading of all "matching" fieldName's in the <code>SolrDocument</code> Returns <code>
-     * SolrDocument.getFieldValue</code> for regular fields, and <code>Map<String, List<Object>>
-     * </code> for a dynamic field. The key is all matching fieldName's.
+     * reading of all "matching" fieldName's in the {@link SolrDocument} Returns {@link
+     * SolrDocument#getFieldValue} for regular fields, and {@code Map<String, List<Object>>} for a
+     * dynamic field. The key is all matching fieldName's.
      */
     private Object getFieldValue(SolrDocument solrDocument) {
       if (child != null) {

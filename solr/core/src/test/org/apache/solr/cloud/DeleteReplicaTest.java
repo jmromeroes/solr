@@ -29,7 +29,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest.Create;
 import org.apache.solr.client.solrj.request.CoreStatus;
@@ -44,8 +43,8 @@ import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.cloud.ZkStateReaderAccessor;
 import org.apache.solr.common.util.TimeSource;
-import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.ZkContainer;
+import org.apache.solr.embedded.JettySolrRunner;
 import org.apache.solr.util.TimeOut;
 import org.junit.After;
 import org.junit.Before;
@@ -130,7 +129,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
     waitForState(
         "Expected replica " + replica.getName() + " to have been removed",
         collectionName,
-        (n, c) -> {
+        c -> {
           Slice testShard = c.getSlice(shard.getName());
           return testShard.getReplica(replica.getName()) == null;
         });
@@ -177,7 +176,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
 
     Replica newLeader = cluster.getZkStateReader().getLeaderRetry(collectionName, "shard1");
 
-    assertFalse(leader.equals(newLeader));
+    assertNotEquals(leader, newLeader);
 
     // Confirm that the instance and data directory were deleted by default
     assertFalse(
@@ -281,14 +280,13 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
               cluster.getOpenOverseer().getSolrCloudManager(),
               cluster.getOpenOverseer().getZkStateReader());
     } else {
-      cluster.getOpenOverseer().getStateUpdateQueue().offer(Utils.toJSON(m));
+      cluster.getOpenOverseer().getStateUpdateQueue().offer(m);
     }
 
     waitForState(
         "Timeout waiting for replica get deleted",
         collectionName,
-        (liveNodes, collectionState) ->
-            collectionState.getSlice("shard1").getReplicas().size() == 2);
+        collectionState -> collectionState.getSlice("shard1").getReplicas().size() == 2);
 
     TimeOut timeOut = new TimeOut(60, TimeUnit.SECONDS, TimeSource.NANO_TIME);
     timeOut.waitFor(
@@ -327,7 +325,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
     JettySolrRunner leaderJetty = getJettyForReplica(leader);
     Replica replica1 =
         shard1.getReplicas(replica -> !replica.getName().equals(leader.getName())).get(0);
-    assertFalse(replica1.getName().equals(leader.getName()));
+    assertNotEquals(replica1.getName(), leader.getName());
 
     JettySolrRunner replica1Jetty = getJettyForReplica(replica1);
 
@@ -347,6 +345,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
             log.info("Running delete core {}", cd);
 
             try {
+              waitForJettyInit(replica1Jetty, replica1JettyNodeName);
               ZkController replica1ZkController =
                   replica1Jetty.getCoreContainer().getZkController();
               ZkNodeProps m =
@@ -373,7 +372,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
                         cluster.getOpenOverseer().getSolrCloudManager(),
                         cluster.getOpenOverseer().getZkStateReader());
               } else {
-                cluster.getOpenOverseer().getStateUpdateQueue().offer(Utils.toJSON(m));
+                cluster.getOpenOverseer().getStateUpdateQueue().offer(m);
               }
 
               boolean replicaDeleted = false;
@@ -395,7 +394,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
                   }
                   Thread.sleep(500);
                 } catch (NullPointerException | SolrException e) {
-                  e.printStackTrace();
+                  log.error("error deleting replica", e);
                   Thread.sleep(500);
                 }
               }
@@ -403,7 +402,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
                 fail("Timeout for waiting replica get deleted");
               }
             } catch (Exception e) {
-              e.printStackTrace();
+              log.error("Failed to delete replica", e);
               fail("Failed to delete replica");
             } finally {
               // avoiding deadlock
@@ -430,7 +429,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
         waitForState(
             "Expected replica:" + replica1 + " get down",
             collectionName,
-            (liveNodes, collectionState) ->
+            collectionState ->
                 collectionState.getSlice("shard1").getReplica(replica1.getName()).getState()
                     == DOWN);
       }
@@ -465,7 +464,7 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
     waitForState(
         "Expected new active leader",
         collectionName,
-        (liveNodes, collectionState) -> {
+        collectionState -> {
           Slice shard = collectionState.getSlice("shard1");
           Replica newLeader = shard.getLeader();
           return newLeader != null
@@ -488,11 +487,27 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
   }
 
   private void waitForNodeLeave(String lostNodeName) throws InterruptedException {
-    ZkStateReader reader = cluster.getZkStateReader();
-    TimeOut timeOut = new TimeOut(20, TimeUnit.SECONDS, TimeSource.NANO_TIME);
-    while (reader.getClusterState().getLiveNodes().contains(lostNodeName)) {
+
+    try {
+      cluster
+          .getZkStateReader()
+          .waitForLiveNodes(20, TimeUnit.SECONDS, (o, n) -> !n.contains(lostNodeName));
+    } catch (TimeoutException e) {
+      fail("Wait for " + lostNodeName + " to leave failed!");
+    }
+  }
+
+  /**
+   * see SOLR-16848 working around a timing issue where the callback will be faster than the
+   * dispatchFilter's init
+   */
+  private void waitForJettyInit(JettySolrRunner replica1Jetty, String replica1JettyNodeName)
+      throws InterruptedException {
+    TimeOut timeOut = new TimeOut(5, TimeUnit.SECONDS, TimeSource.NANO_TIME);
+    while (!replica1Jetty.isRunning()) {
       Thread.sleep(100);
-      if (timeOut.hasTimedOut()) fail("Wait for " + lostNodeName + " to leave failed!");
+      if (timeOut.hasTimedOut())
+        fail("Wait for " + replica1JettyNodeName + " replica to init failed!");
     }
   }
 
@@ -533,20 +548,10 @@ public class DeleteReplicaTest extends SolrCloudTestCase {
       thread.join();
     }
 
-    try {
-      cluster
-          .getZkStateReader()
-          .waitForState(
-              collectionName,
-              20,
-              TimeUnit.SECONDS,
-              (liveNodes, collectionState) -> collectionState.getReplicas().size() == 1);
-    } catch (TimeoutException e) {
-      if (log.isInfoEnabled()) {
-        log.info("Timeout wait for state {}", getCollectionState(collectionName));
-      }
-      throw e;
-    }
+    waitForState(
+        "Waiting for single replica in state",
+        collectionName,
+        collectionState -> collectionState.getReplicas().size() == 1);
   }
 
   /**

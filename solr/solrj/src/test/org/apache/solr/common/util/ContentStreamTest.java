@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.zip.GZIPInputStream;
@@ -39,8 +38,8 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
     String input = "aads ghaskdgasgldj asl sadg ajdsg &jag # @ hjsakg hsakdg hjkas s";
     ContentStreamBase stream = new ContentStreamBase.StringStream(input);
     assertEquals(input.length(), stream.getSize().longValue());
-    assertEquals(input, IOUtils.toString(stream.getStream(), StandardCharsets.UTF_8));
-    assertEquals(input, IOUtils.toString(stream.getReader()));
+    assertEquals(input, new String(stream.getStream().readAllBytes(), StandardCharsets.UTF_8));
+    assertEquals(input, StrUtils.stringFromReader(stream.getReader()));
   }
 
   public void testFileStream() throws IOException {
@@ -52,7 +51,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
       is.transferTo(os);
     }
 
-    ContentStreamBase stream = new ContentStreamBase.FileStream(file);
+    ContentStreamBase stream = new ContentStreamBase.FileStream(file.toPath());
     try (InputStream s = stream.getStream();
         FileInputStream fis = new FileInputStream(file);
         InputStreamReader isr =
@@ -76,7 +75,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
       is.transferTo(zos);
     }
 
-    ContentStreamBase stream = new ContentStreamBase.FileStream(file);
+    ContentStreamBase stream = new ContentStreamBase.FileStream(file.toPath());
     try (InputStream s = stream.getStream();
         FileInputStream fis = new FileInputStream(file);
         GZIPInputStream zis = new GZIPInputStream(fis);
@@ -101,8 +100,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
       is.transferTo(os);
     }
 
-    ContentStreamBase stream =
-        new ContentStreamBase.URLStream(new URL(file.toURI().toASCIIString()));
+    ContentStreamBase stream = new ContentStreamBase.URLStream(file.toURI().toURL());
 
     try (InputStream s = stream.getStream();
         FileInputStream fis = new FileInputStream(file);
@@ -133,8 +131,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
       is.transferTo(zos);
     }
 
-    ContentStreamBase stream =
-        new ContentStreamBase.URLStream(new URL(file.toURI().toASCIIString()));
+    ContentStreamBase stream = new ContentStreamBase.URLStream(file.toURI().toURL());
     try (InputStream s = stream.getStream();
         FileInputStream fis = new FileInputStream(file);
         GZIPInputStream zis = new GZIPInputStream(fis);
@@ -150,7 +147,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
     }
   }
 
-  public void testURLStreamCSVGZIPExtention() throws IOException {
+  public void testURLStreamCSVGZIPExtension() throws IOException {
     File file = new File(createTempDir().toFile(), "README.CSV.gz");
 
     try (SolrResourceLoader srl = new SolrResourceLoader(Paths.get("").toAbsolutePath());
@@ -160,8 +157,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
       is.transferTo(zos);
     }
 
-    ContentStreamBase stream =
-        new ContentStreamBase.URLStream(new URL(file.toURI().toASCIIString()));
+    ContentStreamBase stream = new ContentStreamBase.URLStream(file.toURI().toURL());
     try (InputStream s = stream.getStream();
         FileInputStream fis = new FileInputStream(file);
         GZIPInputStream zis = new GZIPInputStream(fis);
@@ -177,7 +173,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
     }
   }
 
-  public void testURLStreamJSONGZIPExtention() throws IOException {
+  public void testURLStreamJSONGZIPExtension() throws IOException {
     File file = new File(createTempDir().toFile(), "README.json.gzip");
 
     try (SolrResourceLoader srl = new SolrResourceLoader(Paths.get("").toAbsolutePath());
@@ -187,8 +183,7 @@ public class ContentStreamTest extends SolrTestCaseJ4 {
       is.transferTo(zos);
     }
 
-    ContentStreamBase stream =
-        new ContentStreamBase.URLStream(new URL(file.toURI().toASCIIString()));
+    ContentStreamBase stream = new ContentStreamBase.URLStream(file.toURI().toURL());
     try (InputStream s = stream.getStream();
         FileInputStream fis = new FileInputStream(file);
         GZIPInputStream zis = new GZIPInputStream(fis);

@@ -31,7 +31,6 @@ import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.IndexSchemaFactory;
 import org.apache.solr.search.CacheConfig;
 import org.apache.solr.update.SolrIndexConfig;
-import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -46,20 +45,6 @@ public class TestConfig extends SolrTestCaseJ4 {
   public void testLib() throws IOException {
     SolrResourceLoader loader = h.getCore().getResourceLoader();
     InputStream data = null;
-    String[] expectedFiles =
-        new String[] {
-          "empty-file-main-lib.txt",
-          "empty-file-a1.txt",
-          "empty-file-a2.txt",
-          "empty-file-b1.txt",
-          "empty-file-b2.txt",
-          "empty-file-c1.txt"
-        };
-    for (String f : expectedFiles) {
-      data = loader.openResource(f);
-      assertNotNull("Should have found file " + f, data);
-      data.close();
-    }
     String[] unexpectedFiles = new String[] {"empty-file-c2.txt", "empty-file-d2.txt"};
     for (String f : unexpectedFiles) {
       data = null;
@@ -164,7 +149,7 @@ public class TestConfig extends SolrTestCaseJ4 {
     SolrIndexConfig sic = sc.indexConfig;
 
     ++numDefaultsTested;
-    assertEquals("default useCompoundFile", false, sic.useCompoundFile);
+    assertFalse("default useCompoundFile", sic.useCompoundFile);
 
     ++numDefaultsTested;
     assertEquals("default maxBufferedDocs", -1, sic.maxBufferedDocs);
@@ -221,16 +206,14 @@ public class TestConfig extends SolrTestCaseJ4 {
   public void testConvertAutoCommitMaxSizeStringToBytes() {
 
     // Valid values
-    Assert.assertEquals(300, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300"));
-    Assert.assertEquals(307200, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300k"));
-    Assert.assertEquals(307200, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300K"));
-    Assert.assertEquals(314572800, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300m"));
-    Assert.assertEquals(314572800, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300M"));
-    Assert.assertEquals(
-        322122547200L, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300g"));
-    Assert.assertEquals(
-        322122547200L, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300G"));
-    Assert.assertEquals(-1, SolrConfig.convertHeapOptionStyleConfigStringToBytes(""));
+    assertEquals(300, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300"));
+    assertEquals(307200, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300k"));
+    assertEquals(307200, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300K"));
+    assertEquals(314572800, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300m"));
+    assertEquals(314572800, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300M"));
+    assertEquals(322122547200L, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300g"));
+    assertEquals(322122547200L, SolrConfig.convertHeapOptionStyleConfigStringToBytes("300G"));
+    assertEquals(-1, SolrConfig.convertHeapOptionStyleConfigStringToBytes(""));
 
     // Invalid values
     RuntimeException thrown =
@@ -256,9 +239,9 @@ public class TestConfig extends SolrTestCaseJ4 {
   public void testMaxSizeSettingWithoutAutoCommit() throws Exception {
     SolrConfig solrConfig =
         new SolrConfig(TEST_PATH().resolve("collection1"), "bad-solrconfig-no-autocommit-tag.xml");
-    Assert.assertEquals(-1, solrConfig.getUpdateHandlerInfo().autoCommitMaxSizeBytes);
-    Assert.assertEquals(-1, solrConfig.getUpdateHandlerInfo().autoCommmitMaxDocs);
-    Assert.assertEquals(-1, solrConfig.getUpdateHandlerInfo().autoCommmitMaxTime);
+    assertEquals(-1, solrConfig.getUpdateHandlerInfo().autoCommitMaxSizeBytes);
+    assertEquals(-1, solrConfig.getUpdateHandlerInfo().autoCommmitMaxDocs);
+    assertEquals(-1, solrConfig.getUpdateHandlerInfo().autoCommmitMaxTime);
   }
 
   // sanity check that sys properties are working as expected

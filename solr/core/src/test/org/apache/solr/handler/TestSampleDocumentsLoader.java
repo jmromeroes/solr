@@ -17,15 +17,10 @@
 
 package org.apache.solr.handler;
 
-import static org.apache.solr.handler.designer.DefaultSampleDocumentsLoader.CSV_MULTI_VALUE_DELIM_PARAM;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import org.apache.solr.SolrTestCase;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -40,7 +35,7 @@ import org.apache.solr.util.ExternalPaths;
 import org.junit.Before;
 import org.junit.Test;
 
-public class TestSampleDocumentsLoader {
+public class TestSampleDocumentsLoader extends SolrTestCase {
 
   SampleDocumentsLoader loader;
   File exampleDir;
@@ -63,7 +58,7 @@ public class TestSampleDocumentsLoader {
   @Test
   public void testCsv() throws Exception {
     ModifiableSolrParams params = new ModifiableSolrParams();
-    params.set(CSV_MULTI_VALUE_DELIM_PARAM, "\\|");
+    params.set(DefaultSampleDocumentsLoader.CSV_MULTI_VALUE_DELIM_PARAM, "\\|");
     List<SolrInputDocument> docs =
         loadTestDocs(params, new File(exampleDir, "films/films.csv"), -1, 1100);
     boolean foundIt = false;
@@ -114,12 +109,12 @@ public class TestSampleDocumentsLoader {
     return "application/octet-stream";
   }
 
-  protected ContentStream getContentStream(File file) {
+  protected ContentStream getContentStream(File file) throws IOException {
     return getContentStream(file, guessContentTypeFromFilename(file.getName()));
   }
 
-  protected ContentStream getContentStream(File file, String contentType) {
-    ContentStreamBase.FileStream stream = new ContentStreamBase.FileStream(file);
+  protected ContentStream getContentStream(File file, String contentType) throws IOException {
+    ContentStreamBase.FileStream stream = new ContentStreamBase.FileStream(file.toPath());
     stream.setContentType(contentType);
     return stream;
   }

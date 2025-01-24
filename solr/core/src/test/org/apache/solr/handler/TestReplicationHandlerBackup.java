@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.invoke.MethodHandles;
+import java.net.URI;
 import java.net.URL;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -29,7 +30,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
-import org.apache.commons.io.IOUtils;
+import java.util.concurrent.TimeUnit;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.IndexSearcher;
@@ -42,9 +43,9 @@ import org.apache.lucene.tests.util.TestUtil;
 import org.apache.solr.SolrJettyTestBase;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.embedded.JettyConfig;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.util.FileUtils;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.embedded.JettyConfig;
+import org.apache.solr.embedded.JettySolrRunner;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -63,8 +64,6 @@ public class TestReplicationHandlerBackup extends SolrJettyTestBase {
   private static final String CONF_DIR =
       "solr" + File.separator + "collection1" + File.separator + "conf" + File.separator;
 
-  private static String context = "/solr";
-
   boolean addNumberToKeepInRequest = true;
   String backupKeepParamName = ReplicationHandler.NUMBER_BACKUPS_TO_KEEP_REQUEST_PARAM;
   private static long docsSeed; // see indexDocs()
@@ -72,27 +71,26 @@ public class TestReplicationHandlerBackup extends SolrJettyTestBase {
 
   private static JettySolrRunner createAndStartJetty(ReplicationTestHelper.SolrInstance instance)
       throws Exception {
-    FileUtils.copyFile(
-        new File(SolrTestCaseJ4.TEST_HOME(), "solr.xml"),
-        new File(instance.getHomeDir(), "solr.xml"));
+    Files.copy(
+        Path.of(SolrTestCaseJ4.TEST_HOME(), "solr.xml"),
+        Path.of(instance.getHomeDir(), "solr.xml"));
     Properties nodeProperties = new Properties();
     nodeProperties.setProperty("solr.data.dir", instance.getDataDir());
-    JettyConfig jettyConfig = JettyConfig.builder().setContext("/solr").setPort(0).build();
+    JettyConfig jettyConfig = JettyConfig.builder().setPort(0).build();
     JettySolrRunner jetty = new JettySolrRunner(instance.getHomeDir(), nodeProperties, jettyConfig);
     jetty.start();
     return jetty;
   }
 
   private static SolrClient createNewSolrClient(int port) {
-    try {
-      // set up the client...
-      final String baseUrl = buildUrl(port, context);
-      return getHttpSolrClient(baseUrl, 15000, 60000);
-    } catch (Exception ex) {
-      throw new RuntimeException(ex);
-    }
+    final String baseUrl = buildUrl(port);
+    return new HttpSolrClient.Builder(baseUrl)
+        .withConnectionTimeout(15000, TimeUnit.MILLISECONDS)
+        .withSocketTimeout(60000, TimeUnit.MILLISECONDS)
+        .build();
   }
 
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();
@@ -239,7 +237,7 @@ public class TestReplicationHandlerBackup extends SolrJettyTestBase {
     }
   }
 
-  private void testDeleteNamedBackup(String backupNames[]) throws Exception {
+  private void testDeleteNamedBackup(String[] backupNames) throws Exception {
     final BackupStatusChecker backupStatus =
         new BackupStatusChecker(leaderClient, "/" + DEFAULT_TEST_CORENAME + "/replication");
     for (int i = 0; i < 2; i++) {
@@ -255,20 +253,16 @@ public class TestReplicationHandlerBackup extends SolrJettyTestBase {
   public static void runBackupCommand(JettySolrRunner leaderJetty, String cmd, String params)
       throws IOException {
     String leaderUrl =
-        buildUrl(leaderJetty.getLocalPort(), context)
+        buildUrl(leaderJetty.getLocalPort())
             + "/"
             + DEFAULT_TEST_CORENAME
             + ReplicationHandler.PATH
             + "?wt=xml&command="
             + cmd
             + params;
-    InputStream stream = null;
-    try {
-      URL url = new URL(leaderUrl);
-      stream = url.openStream();
-      stream.close();
-    } finally {
-      IOUtils.closeQuietly(stream);
+    URL url = URI.create(leaderUrl).toURL();
+    try (InputStream stream = url.openStream()) {
+      assert stream != null;
     }
   }
 }

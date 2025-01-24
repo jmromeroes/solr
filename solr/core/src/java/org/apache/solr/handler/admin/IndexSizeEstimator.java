@@ -45,6 +45,8 @@ import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.StandardDirectoryReader;
 import org.apache.lucene.index.StoredFieldVisitor;
+import org.apache.lucene.index.StoredFields;
+import org.apache.lucene.index.TermVectors;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -274,13 +276,11 @@ public class IndexSizeEstimator {
   private void convert(Map<String, Object> result) {
     for (Map.Entry<String, Object> entry : result.entrySet()) {
       Object value = entry.getValue();
-      if (value instanceof ItemPriorityQueue) {
-        ItemPriorityQueue queue = (ItemPriorityQueue) value;
+      if (value instanceof ItemPriorityQueue queue) {
         Map<String, Object> map = new LinkedHashMap<>();
         queue.toMap(map);
         entry.setValue(map);
-      } else if (value instanceof MapWriterSummaryStatistics) {
-        MapWriterSummaryStatistics stats = (MapWriterSummaryStatistics) value;
+      } else if (value instanceof MapWriterSummaryStatistics stats) {
         Map<String, Object> map = new LinkedHashMap<>();
         stats.toMap(map);
         entry.setValue(map);
@@ -306,8 +306,7 @@ public class IndexSizeEstimator {
                     ((Map<String, Object>) perField)
                         .forEach(
                             (k, val) -> {
-                              if (val instanceof SummaryStatistics) {
-                                SummaryStatistics stats = (SummaryStatistics) val;
+                              if (val instanceof SummaryStatistics stats) {
                                 if (k.startsWith("lengths")) {
                                   AtomicLong total =
                                       (AtomicLong)
@@ -384,11 +383,12 @@ public class IndexSizeEstimator {
     for (LeafReaderContext leafReaderContext : reader.leaves()) {
       LeafReader leafReader = leafReaderContext.reader();
       Bits liveDocs = leafReader.getLiveDocs();
+      TermVectors leafTermVectors = leafReader.termVectors();
       for (int docId = 0; docId < leafReader.maxDoc(); docId += samplingStep) {
         if (liveDocs != null && !liveDocs.get(docId)) {
           continue;
         }
-        Fields termVectors = leafReader.getTermVectors(docId);
+        Fields termVectors = leafTermVectors.get(docId);
         if (termVectors == null) {
           continue;
         }
@@ -593,8 +593,7 @@ public class IndexSizeEstimator {
       LeafReader leafReader = context.reader();
       EstimatingVisitor visitor = new EstimatingVisitor(stats, topN, maxLength, samplingStep);
       Bits liveDocs = leafReader.getLiveDocs();
-      if (leafReader instanceof CodecReader) {
-        CodecReader codecReader = (CodecReader) leafReader;
+      if (leafReader instanceof CodecReader codecReader) {
         StoredFieldsReader storedFieldsReader = codecReader.getFieldsReader();
         // this instance may be faster for a full sequential pass
         StoredFieldsReader mergeInstance = storedFieldsReader.getMergeInstance();
@@ -602,17 +601,18 @@ public class IndexSizeEstimator {
           if (liveDocs != null && !liveDocs.get(docId)) {
             continue;
           }
-          mergeInstance.visitDocument(docId, visitor);
+          mergeInstance.document(docId, visitor);
         }
         if (mergeInstance != storedFieldsReader) {
           mergeInstance.close();
         }
       } else {
+        StoredFields storedFields = leafReader.storedFields();
         for (int docId = 0; docId < leafReader.maxDoc(); docId += samplingStep) {
           if (liveDocs != null && !liveDocs.get(docId)) {
             continue;
           }
-          leafReader.document(docId, visitor);
+          storedFields.document(docId, visitor);
         }
       }
     }
@@ -628,6 +628,7 @@ public class IndexSizeEstimator {
       this.size = size;
     }
 
+    @Override
     public String toString() {
       return "size=" + size + ", value=" + value;
     }
@@ -663,6 +664,7 @@ public class IndexSizeEstimator {
       return a.size < b.size;
     }
 
+    @Override
     public String toString() {
       StringBuilder sb = new StringBuilder();
       Iterator<Item> it = iterator();
@@ -709,6 +711,7 @@ public class IndexSizeEstimator {
      *
      * @param value newly allocated byte array with the binary contents.
      */
+    @Override
     public void binaryField(FieldInfo fieldInfo, byte[] value) throws IOException {
       // trim the value if needed
       int len = value != null ? value.length : 0;
@@ -722,6 +725,7 @@ public class IndexSizeEstimator {
     }
 
     /** Process a string field. */
+    @Override
     public void stringField(FieldInfo fieldInfo, String value) throws IOException {
       // trim the value if needed
       int len = value != null ? UnicodeUtil.calcUTF16toUTF8Length(value, 0, value.length()) : 0;
@@ -732,21 +736,25 @@ public class IndexSizeEstimator {
     }
 
     /** Process a int numeric field. */
+    @Override
     public void intField(FieldInfo fieldInfo, int value) throws IOException {
       countItem(fieldInfo.name, String.valueOf(value), 4);
     }
 
     /** Process a long numeric field. */
+    @Override
     public void longField(FieldInfo fieldInfo, long value) throws IOException {
       countItem(fieldInfo.name, String.valueOf(value), 8);
     }
 
     /** Process a float numeric field. */
+    @Override
     public void floatField(FieldInfo fieldInfo, float value) throws IOException {
       countItem(fieldInfo.name, String.valueOf(value), 4);
     }
 
     /** Process a double numeric field. */
+    @Override
     public void doubleField(FieldInfo fieldInfo, double value) throws IOException {
       countItem(fieldInfo.name, String.valueOf(value), 8);
     }

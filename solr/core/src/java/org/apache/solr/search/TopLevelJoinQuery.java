@@ -56,14 +56,13 @@ public class TopLevelJoinQuery extends JoinQuery {
   @Override
   public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost)
       throws IOException {
-    if (!(searcher instanceof SolrIndexSearcher)) {
+    if (!(searcher instanceof SolrIndexSearcher solrSearcher)) {
       log.debug(
           "Falling back to JoinQueryWeight because searcher [{}] is not the required SolrIndexSearcher",
           searcher);
       return super.createWeight(searcher, scoreMode, boost);
     }
 
-    final SolrIndexSearcher solrSearcher = (SolrIndexSearcher) searcher;
     final JoinQueryWeight weight =
         new JoinQueryWeight(solrSearcher, ScoreMode.COMPLETE_NO_SCORES, 1.0f);
     final SolrIndexSearcher fromSearcher = weight.fromSearcher;
@@ -87,6 +86,7 @@ public class TopLevelJoinQuery extends JoinQuery {
 
       final boolean toMultivalued = toSearcher.getSchema().getFieldOrNull(toField).multiValued();
       return new ConstantScoreWeight(this, boost) {
+        @Override
         public Scorer scorer(LeafReaderContext context) throws IOException {
           if (toBitsetBounds.lower == BitsetBounds.NO_MATCHES) {
             return null;
@@ -106,6 +106,7 @@ public class TopLevelJoinQuery extends JoinQuery {
               this.score(),
               scoreMode,
               new TwoPhaseIterator(toApproximation) {
+                @Override
                 public boolean matches() throws IOException {
                   final boolean hasDoc =
                       topLevelToDocValues.advanceExact(docBase + approximation.docID());
@@ -121,12 +122,14 @@ public class TopLevelJoinQuery extends JoinQuery {
                   return false;
                 }
 
+                @Override
                 public float matchCost() {
                   return 10.0F;
                 }
               });
         }
 
+        @Override
         public boolean isCacheable(LeafReaderContext ctx) {
           return false;
         }
@@ -261,6 +264,7 @@ public class TopLevelJoinQuery extends JoinQuery {
       super(joinField, joinField, null, subQuery);
     }
 
+    @Override
     protected BitsetBounds convertFromOrdinalsIntoToField(
         LongBitSet fromOrdBitSet,
         SortedSetDocValues fromDocValues,

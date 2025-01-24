@@ -89,6 +89,7 @@ public class SolrDocument extends SolrDocumentBase<Object, SolrDocument>
    * Set a field with the given object. If the object is an Array, it will set multiple fields with
    * the included contents. This will replace any existing field with the given name
    */
+  @Override
   public void setField(String name, Object value) {
     if (value instanceof Object[]) {
       value = new ArrayList<>(Arrays.asList((Object[]) value));
@@ -165,8 +166,7 @@ public class SolrDocument extends SolrDocumentBase<Object, SolrDocument>
   /** returns the first value for a field */
   public Object getFirstValue(String name) {
     Object v = _fields.get(name);
-    if (v == null || !(v instanceof Collection)) return v;
-    Collection<?> c = (Collection<?>) v;
+    if (v == null || !(v instanceof Collection<?> c)) return v;
     if (c.size() > 0) {
       return c.iterator().next();
     }
@@ -214,8 +214,7 @@ public class SolrDocument extends SolrDocumentBase<Object, SolrDocument>
       final Object value = keyVal.getValue();
       if (value instanceof SolrDocument) {
         consumer.accept(keyVal.getKey(), (SolrDocument) value);
-      } else if (value instanceof Collection) {
-        Collection<?> cVal = (Collection<?>) value;
+      } else if (value instanceof Collection<?> cVal) {
         for (Object v : cVal) {
           if (v instanceof SolrDocument) {
             consumer.accept(keyVal.getKey(), (SolrDocument) v);
@@ -401,6 +400,7 @@ public class SolrDocument extends SolrDocumentBase<Object, SolrDocument>
   public Set<Entry<String, Object>> entrySet() {
     return _fields.entrySet();
   }
+
   // TODO: Shouldn't the input parameter here be a String?  The _fields map requires a String.
   @Override
   public Object get(Object key) {

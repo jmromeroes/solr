@@ -30,9 +30,9 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -52,7 +52,9 @@ import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.MultiTerms;
 import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermVectors;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -123,7 +125,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
       if ("all".equalsIgnoreCase(v)) return ALL;
       throw new SolrException(ErrorCode.BAD_REQUEST, "Unknown Show Style: " + v);
     }
-  };
+  }
 
   @Override
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
@@ -161,7 +163,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
       }
       Document doc = null;
       try {
-        doc = reader.document(docId);
+        doc = reader.storedFields().document(docId);
       } catch (Exception ex) {
       }
       if (doc == null) {
@@ -316,6 +318,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
       Document doc, int docId, IndexReader reader, IndexSchema schema) throws IOException {
     final CharsRefBuilder spare = new CharsRefBuilder();
     SimpleOrderedMap<Object> finfo = new SimpleOrderedMap<>();
+    TermVectors termVectors = null;
     for (Object o : doc.getFields()) {
       Field field = (Field) o;
       SimpleOrderedMap<Object> f = new SimpleOrderedMap<>();
@@ -342,10 +345,9 @@ public class LukeRequestHandler extends RequestHandlerBase {
                     .array(),
                 StandardCharsets.ISO_8859_1));
       }
-      if (!ftype.isPointField()) {
+      if (ftype != null && !ftype.isPointField()) {
         Term t =
-            new Term(
-                field.name(), ftype != null ? ftype.storedToIndexed(field) : field.stringValue());
+            new Term(field.name(), Objects.requireNonNullElse(ftype.storedToIndexed(field), ""));
         f.add(
             "docFreq",
             t.text() == null ? 0 : reader.docFreq(t)); // this can be 0 for non-indexed fields
@@ -354,7 +356,8 @@ public class LukeRequestHandler extends RequestHandlerBase {
       // If we have a term vector, return that
       if (field.fieldType().storeTermVectors()) {
         try {
-          Terms v = reader.getTermVector(docId, field.name());
+          if (termVectors == null) termVectors = reader.termVectors();
+          Terms v = termVectors.get(docId, field.name());
           if (v != null) {
             SimpleOrderedMap<Integer> tfv = new SimpleOrderedMap<>();
             final TermsEnum termsEnum = v.iterator();
@@ -463,6 +466,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
     PostingsEnum postingsEnum = null;
     TermsEnum termsEnum = terms.iterator();
     BytesRef text;
+    StoredFields storedFields = reader.storedFields();
     // Deal with the chance that the first bunch of terms are in deleted documents. Is there a
     // better way?
     for (int idx = 0; idx < 1000 && postingsEnum == null; ++idx) {
@@ -477,7 +481,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
         if (liveDocs != null && liveDocs.get(postingsEnum.docID())) {
           continue;
         }
-        return reader.document(postingsEnum.docID());
+        return storedFields.document(postingsEnum.docID());
       }
     }
     return null;
@@ -543,9 +547,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
   private static SimpleOrderedMap<Object> getAnalyzerInfo(Analyzer analyzer) {
     SimpleOrderedMap<Object> aninfo = new SimpleOrderedMap<>();
     aninfo.add("className", analyzer.getClass().getName());
-    if (analyzer instanceof TokenizerChain) {
-
-      TokenizerChain tchain = (TokenizerChain) analyzer;
+    if (analyzer instanceof TokenizerChain tchain) {
 
       CharFilterFactory[] cfiltfacs = tchain.getCharFilterFactories();
       if (0 < cfiltfacs.length) {
@@ -598,7 +600,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
     if (f.getDefaultValue() != null) {
       field.add("default", f.getDefaultValue());
     }
-    if (f == uniqueField) {
+    if (f.equals(uniqueField)) {
       field.add("uniqueKey", true);
     }
     if (ft.getIndexAnalyzer().getPositionIncrementGap(f.getName()) != 0) {
@@ -773,6 +775,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
         _buckets[idx] = buckets[idx];
       }
     }
+
     // TODO? should this be a list or a map?
     public NamedList<Integer> toNamedList() {
       NamedList<Integer> nl = new NamedList<>();
@@ -782,6 +785,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
       return nl;
     }
   }
+
   /** Private internal class that counts up frequent terms */
   private static class TopTermQueue extends PriorityQueue<TopTermQueue.TermInfo> {
     static class TermInfo {
@@ -811,7 +815,7 @@ public class LukeRequestHandler extends RequestHandlerBase {
     /** This is a destructive call... the queue is empty at the end */
     public NamedList<Integer> toNamedList(IndexSchema schema) {
       // reverse the list..
-      List<TermInfo> aslist = new LinkedList<>();
+      List<TermInfo> aslist = new ArrayList<>();
       while (size() > 0) {
         aslist.add(0, pop());
       }

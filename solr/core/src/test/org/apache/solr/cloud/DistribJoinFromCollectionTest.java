@@ -25,8 +25,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.BaseHttpSolrClient;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
@@ -149,7 +149,7 @@ public class DistribJoinFromCollectionTest extends SolrCloudTestCase {
           new QueryRequest(params("collection", toColl, "q", joinQ, "fl", "id,get_s,score"));
       QueryResponse rsp = new QueryResponse(client.request(qr), client);
       SolrDocumentList hits = rsp.getResults();
-      assertTrue("Expected 1 doc, got " + hits, hits.getNumFound() == 1);
+      assertEquals("Expected 1 doc, got " + hits, 1, hits.getNumFound());
       SolrDocument doc = hits.get(0);
       assertEquals(toDocId, doc.getFirstValue("id"));
       assertEquals("b", doc.getFirstValue("get_s"));
@@ -175,7 +175,7 @@ public class DistribJoinFromCollectionTest extends SolrCloudTestCase {
           new QueryRequest(params("collection", toColl, "q", joinQ, "fl", "id,get_s,score"));
       final QueryResponse rsp = new QueryResponse(client.request(qr), client);
       final SolrDocumentList hits = rsp.getResults();
-      assertTrue("Expected 1 doc", hits.getNumFound() == 1);
+      assertEquals("Expected 1 doc", 1, hits.getNumFound());
       SolrDocument doc = hits.get(0);
       assertEquals(toDocId, doc.getFirstValue("id"));
       assertEquals("b", doc.getFirstValue("get_s"));
@@ -197,7 +197,7 @@ public class DistribJoinFromCollectionTest extends SolrCloudTestCase {
           new QueryRequest(params("collection", toColl, "q", joinQ, "fl", "id,get_s,score"));
       final QueryResponse rsp = new QueryResponse(client.request(qr), client);
       final SolrDocumentList hits = rsp.getResults();
-      assertTrue("Expected no hits", hits.getNumFound() == 0);
+      assertEquals("Expected no hits", 0, hits.getNumFound());
     }
   }
 
@@ -224,10 +224,9 @@ public class DistribJoinFromCollectionTest extends SolrCloudTestCase {
             + " to=join_s}match_s:c";
     final QueryRequest qr =
         new QueryRequest(params("collection", toColl, "q", joinQ, "fl", "id,get_s,score"));
-    BaseHttpSolrClient.RemoteSolrException ex =
+    SolrClient.RemoteSolrException ex =
         assertThrows(
-            BaseHttpSolrClient.RemoteSolrException.class,
-            () -> cluster.getSolrClient().request(qr));
+            SolrClient.RemoteSolrException.class, () -> cluster.getSolrClient().request(qr));
     assertEquals(SolrException.ErrorCode.BAD_REQUEST.code, ex.code());
     assertTrue(ex.getMessage().contains(wrongName));
   }

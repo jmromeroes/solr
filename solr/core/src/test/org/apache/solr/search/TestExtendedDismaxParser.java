@@ -51,7 +51,6 @@ import org.apache.solr.common.util.Utils;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.util.BaseTestHarness;
 import org.apache.solr.util.SolrPluginUtils;
-import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -1517,7 +1516,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
     ExtendedDismaxQParser parser =
         new ExtendedDismaxQParser(query, null, request.getParams(), request);
     List<ExtendedDismaxQParser.Clause> clauses = parser.splitIntoClauses(query, false);
-    Assert.assertEquals(3, clauses.size());
+    assertEquals(3, clauses.size());
     assertClause(clauses.get(0), "\\(", false, true);
     assertClause(clauses.get(1), "foo\nfoo", true, false);
     assertClause(clauses.get(2), "\\)", false, true);
@@ -1526,7 +1525,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
     request = req("q", query, "qf", "cat_s", "defType", "edismax");
     parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
     clauses = parser.splitIntoClauses(query, false);
-    Assert.assertEquals(5, clauses.size());
+    assertEquals(5, clauses.size());
     assertClause(clauses.get(0), "\\[", false, true, "cat_s");
     assertClause(clauses.get(1), "foo\nfoo", true, false);
     assertClause(clauses.get(2), "TO", true, false);
@@ -1537,7 +1536,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
     request = req("q", query, "qf", "cat_s", "defType", "edismax");
     parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
     clauses = parser.splitIntoClauses(query, false);
-    Assert.assertEquals(5, clauses.size());
+    assertEquals(5, clauses.size());
     assertClause(clauses.get(0), "\\[", true, true, "cat_s");
     assertClause(clauses.get(1), "foo\nfoo", true, false);
     assertClause(clauses.get(2), "TO", true, false);
@@ -1553,7 +1552,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
 
     parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
     clauses = parser.splitIntoClauses(query, false);
-    Assert.assertEquals(1, clauses.size());
+    assertEquals(1, clauses.size());
     assertClause(
         clauses.get(0), "\\!\\(\\)\\:\\^\\[\\]\\{\\}\\~\\*\\?\\\"\\+\\-\\\\\\|\\&\\/", false, true);
 
@@ -1562,7 +1561,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
 
     parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
     clauses = parser.splitIntoClauses(query, false);
-    Assert.assertEquals(1, clauses.size());
+    assertEquals(1, clauses.size());
     assertClause(clauses.get(0), "foo\\/", false, true);
   }
 
@@ -1572,10 +1571,10 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
       boolean hasWhitespace,
       boolean hasSpecialSyntax,
       String field) {
-    Assert.assertEquals(value, clause.val);
-    Assert.assertEquals(hasWhitespace, clause.hasWhitespace);
-    Assert.assertEquals(hasSpecialSyntax, clause.hasSpecialSyntax);
-    Assert.assertEquals(field, clause.field);
+    assertEquals(value, clause.val);
+    assertEquals(hasWhitespace, clause.hasWhitespace);
+    assertEquals(hasSpecialSyntax, clause.hasSpecialSyntax);
+    assertEquals(field, clause.field);
   }
 
   private static void assertClause(
@@ -3125,8 +3124,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
       Query query, String field, String value, int boost, boolean fuzzy) {
 
     float queryBoost = 1f;
-    if (query instanceof BoostQuery) {
-      BoostQuery bq = (BoostQuery) query;
+    if (query instanceof BoostQuery bq) {
       query = bq.getQuery();
       queryBoost = bq.getBoost();
     }
@@ -3198,7 +3196,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
       return new MultilanguageDismaxConfiguration(localParams, params, req);
     }
 
-    class MultilanguageDismaxConfiguration extends ExtendedDismaxConfiguration {
+    static class MultilanguageDismaxConfiguration extends ExtendedDismaxConfiguration {
 
       public MultilanguageDismaxConfiguration(
           SolrParams localParams, SolrParams params, SolrQueryRequest req) {
@@ -3226,7 +3224,7 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
       return new FuzzyQueryParser(qParser, field);
     }
 
-    class FuzzyQueryParser extends ExtendedSolrQueryParser {
+    static class FuzzyQueryParser extends ExtendedSolrQueryParser {
 
       private Set<String> frequentlyMisspelledWords;
 

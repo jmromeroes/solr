@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -207,7 +206,7 @@ public class TestScoreJoinQPNoScore extends SolrTestCaseJ4 {
       Query y =
           QParser.getParser("{!join from=dept_ss to=dept_ss score=none}text_t:develop", req)
               .getQuery();
-      assertFalse("diff from fields produce equal queries", x.equals(y));
+      assertNotEquals("diff from fields produce equal queries", x, y);
     }
   }
 
@@ -321,7 +320,7 @@ public class TestScoreJoinQPNoScore extends SolrTestCaseJ4 {
         Set<Comparable> docs = join(fromDocs, pivot);
         List<Doc> docList = new ArrayList<Doc>(docs.size());
         for (Comparable id : docs) docList.add(model.get(id));
-        Collections.sort(docList, createComparator("_docid_", true, false, false, false));
+        docList.sort(createComparator("_docid_", true, false, false, false));
         List sortedDocs = new ArrayList();
         for (Doc doc : docList) {
           if (sortedDocs.size() >= 10) break;
@@ -398,7 +397,7 @@ public class TestScoreJoinQPNoScore extends SolrTestCaseJ4 {
           {
             final Map<String, String> ps = ((MapSolrParams) req.getParams()).getMap();
             final String q = ps.get("q");
-            ps.put("q", q.replaceAll("join score=none", "join"));
+            ps.put("q", q.replace("join score=none", "join"));
             log.error("plain join: {}", h.query(req));
             ps.put("q", q);
           }
@@ -406,7 +405,7 @@ public class TestScoreJoinQPNoScore extends SolrTestCaseJ4 {
             // re-execute the request... good for putting a breakpoint here for debugging
             final Map<String, String> ps = ((MapSolrParams) req.getParams()).getMap();
             final String q = ps.get("q");
-            ps.put("q", q.replaceAll("\\}", " cache=false\\}"));
+            ps.put("q", q.replace("}", " cache=false}"));
             h.query(req);
           }
           fail(err);

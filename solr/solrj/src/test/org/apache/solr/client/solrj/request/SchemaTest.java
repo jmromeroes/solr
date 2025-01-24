@@ -112,7 +112,8 @@ public class SchemaTest extends RestTestBase {
   public void init() throws Exception {
     File tmpSolrHome = createTempDir().toFile();
     FileUtils.copyDirectory(
-        new File(getFile("solrj/solr/collection1").getParent()), tmpSolrHome.getAbsoluteFile());
+        new File(getFile("solrj/solr/collection1").getParent().toString()),
+        tmpSolrHome.getAbsoluteFile());
 
     final SortedMap<ServletHolder, String> extraServlets = new TreeMap<>();
 
@@ -130,10 +131,7 @@ public class SchemaTest extends RestTestBase {
 
   @After
   public void cleanup() throws Exception {
-    if (jetty != null) {
-      jetty.stop();
-      jetty = null;
-    }
+    solrClientTestRule.reset();
     if (restTestHarness != null) {
       restTestHarness.close();
     }
@@ -148,7 +146,7 @@ public class SchemaTest extends RestTestBase {
     SchemaRepresentation schemaRepresentation = schemaResponse.getSchemaRepresentation();
     assertNotNull(schemaRepresentation);
     assertEquals("test", schemaRepresentation.getName());
-    assertEquals(1.6, schemaRepresentation.getVersion(), 0.001f);
+    assertEquals(1.7, schemaRepresentation.getVersion(), 0.001f);
     assertEquals("id", schemaRepresentation.getUniqueKey());
     assertFalse(schemaRepresentation.getFields().isEmpty());
     assertFalse(schemaRepresentation.getDynamicFields().isEmpty());
@@ -171,7 +169,7 @@ public class SchemaTest extends RestTestBase {
     SchemaResponse.SchemaVersionResponse schemaVersionResponse =
         schemaVersionRequest.process(getSolrClient());
     assertValidSchemaResponse(schemaVersionResponse);
-    assertEquals(1.6, schemaVersionResponse.getSchemaVersion(), 0.001);
+    assertEquals(1.7, schemaVersionResponse.getSchemaVersion(), 0.001);
   }
 
   @Test
@@ -844,7 +842,7 @@ public class SchemaTest extends RestTestBase {
     createStoredStringField(destFieldName1, getSolrClient());
     createStoredStringField(destFieldName2, getSolrClient());
 
-    Integer maxChars = 200;
+    int maxChars = 200;
     SchemaRequest.AddCopyField addCopyFieldRequest =
         new SchemaRequest.AddCopyField(
             srcFieldName, Arrays.asList(destFieldName1, destFieldName2), maxChars);
@@ -862,7 +860,7 @@ public class SchemaTest extends RestTestBase {
         int currentMaxChars = (Integer) currentCopyField.get("maxChars");
         assertThat(
             currentDestFieldName, anyOf(is(equalTo(destFieldName1)), is(equalTo(destFieldName2))));
-        assertTrue(maxChars == currentMaxChars);
+        assertEquals(maxChars, currentMaxChars);
       }
     }
   }

@@ -19,6 +19,7 @@ package org.apache.solr.legacy;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.FixedBitSet;
@@ -224,9 +225,10 @@ public class TestLegacyNumericUtils extends SolrTestCase {
     // check forward and back conversion
     for (int i = 0; i < vals.length; i++) {
       longVals[i] = NumericUtils.doubleToSortableLong(vals[i]);
-      assertTrue(
+      assertEquals(
           "forward and back conversion should generate same double",
-          Double.compare(vals[i], NumericUtils.sortableLongToDouble(longVals[i])) == 0);
+          0,
+          Double.compare(vals[i], NumericUtils.sortableLongToDouble(longVals[i])));
     }
 
     // check sort order (prefixVals should be ascending)
@@ -235,13 +237,13 @@ public class TestLegacyNumericUtils extends SolrTestCase {
     }
   }
 
-  public static final double[] DOUBLE_NANs = {
-    Double.NaN,
-    Double.longBitsToDouble(0x7ff0000000000001L),
-    Double.longBitsToDouble(0x7fffffffffffffffL),
-    Double.longBitsToDouble(0xfff0000000000001L),
-    Double.longBitsToDouble(0xffffffffffffffffL)
-  };
+  public static final List<Double> DOUBLE_NANs =
+      List.of(
+          Double.NaN,
+          Double.longBitsToDouble(0x7ff0000000000001L),
+          Double.longBitsToDouble(0x7fffffffffffffffL),
+          Double.longBitsToDouble(0xfff0000000000001L),
+          Double.longBitsToDouble(0xffffffffffffffffL));
 
   public void testSortableDoubleNaN() {
     final long plusInf = NumericUtils.doubleToSortableLong(Double.POSITIVE_INFINITY);
@@ -264,7 +266,7 @@ public class TestLegacyNumericUtils extends SolrTestCase {
         new float[] {
           Float.NEGATIVE_INFINITY,
           -2.3E25f,
-          -1.0E15f,
+          -1.0E+15f,
           -1.0f,
           -1.0E-1f,
           -1.0E-2f,
@@ -273,7 +275,7 @@ public class TestLegacyNumericUtils extends SolrTestCase {
           1.0E-2f,
           1.0E-1f,
           1.0f,
-          1.0E15f,
+          1.0E+15f,
           2.3E25f,
           Float.POSITIVE_INFINITY,
           Float.NaN
@@ -283,9 +285,10 @@ public class TestLegacyNumericUtils extends SolrTestCase {
     // check forward and back conversion
     for (int i = 0; i < vals.length; i++) {
       intVals[i] = NumericUtils.floatToSortableInt(vals[i]);
-      assertTrue(
+      assertEquals(
           "forward and back conversion should generate same double",
-          Float.compare(vals[i], NumericUtils.sortableIntToFloat(intVals[i])) == 0);
+          0,
+          Float.compare(vals[i], NumericUtils.sortableIntToFloat(intVals[i])));
     }
 
     // check sort order (prefixVals should be ascending)
@@ -294,13 +297,13 @@ public class TestLegacyNumericUtils extends SolrTestCase {
     }
   }
 
-  public static final float[] FLOAT_NANs = {
-    Float.NaN,
-    Float.intBitsToFloat(0x7f800001),
-    Float.intBitsToFloat(0x7fffffff),
-    Float.intBitsToFloat(0xff800001),
-    Float.intBitsToFloat(0xffffffff)
-  };
+  public static final List<Float> FLOAT_NANs =
+      List.of(
+          Float.NaN,
+          Float.intBitsToFloat(0x7f800001),
+          Float.intBitsToFloat(0x7fffffff),
+          Float.intBitsToFloat(0xff800001),
+          Float.intBitsToFloat(0xffffffff));
 
   public void testSortableFloatNaN() {
     final int plusInf = NumericUtils.floatToSortableInt(Float.POSITIVE_INFINITY);
